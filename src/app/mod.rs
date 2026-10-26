@@ -33,12 +33,18 @@ use crate::data::settings::{self, PetSave};
 use crate::data::skin::{self, Skin};
 use crate::domain::Activity::*;
 use crate::domain::{Pet, Species};
+use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
 use crate::engine::{World, TYPING_PAUSE};
 use crate::platform;
 use crate::render::Stage;
 use crate::support::*;
 
 const FRAME: Duration = Duration::from_micros(33_333);
+/// While everything is near the Dock, the window only reaches this far above it (points, at size 1),
+/// instead of covering the whole screen: a much smaller surface to keep in memory and composite.
+const COMPACT_HEIGHT: f64 = 180.0;
+/// How long things must stay low before the window shrinks again (it grows straight away).
+const SHRINK_AFTER: Duration = Duration::from_secs(2);
 
 /// The window with its OpenGL surface and renderer.
 struct Gfx {
@@ -68,6 +74,10 @@ pub struct App {
     import_rx: Option<Receiver<ImportMsg>>,
     login_enabled: Option<bool>,
     next_id: u64,
+    reminders: Reminders,
+    /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
+    compact: bool,
+    low_since: Option<Instant>,
 }
 
 pub fn run() {
@@ -98,6 +108,9 @@ pub fn run() {
         frame_count: 0,
         next_frame: Instant::now(),
         last_tick: Instant::now(),
+        compact: false,
+        low_since: None,
+        reminders: Reminders::default(),
         logged_typing: false,
         import_rx: None,
         login_enabled: login_item().and_then(|l| l.is_enabled().ok()),
@@ -143,7 +156,10 @@ impl ApplicationHandler for App {
                     _ => {}
                 }
             }
-            WindowEvent::RedrawRequested => self.draw(0.0),
+            WindowEvent::RedrawRequested => {
+                self.stage_mut(|s| s.invalidate());
+                self.draw(0.0);
+            }
             WindowEvent::CloseRequested => el.exit(),
             _ => {}
         }
@@ -267,14 +283,16 @@ impl App {
         self.poll_import();
         self.handle_menu_events(el);
         if self.frame_count % 10 == 0 { self.watch_typing() }
-        // Quiet pets are animated at half rate to save battery.
-        if self.frame_count % 2 == 1 && self.world.is_calm() && !self.wants_mouse() { return }
+        if self.frame_count % 150 == 0 { self.check_calendar() }
+        // Quiet pets are animated at 10 fps to save battery.
+        if self.frame_count % 3 != 0 && self.world.is_calm() && !self.wants_mouse() { return }
 
         let now = Instant::now();
         let dt = (now - self.last_tick).as_secs_f64().min(0.1);
         self.last_tick = now;
         let mouse = self.mouse_in_stage();
         self.world.step(dt, mouse, platform::seconds_since_key());
+        self.fit_window();
         self.draw(dt);
 
         let hot = self.wants_mouse();
@@ -286,8 +304,41 @@ impl App {
 
     fn draw(&mut self, dt: f64) {
         let Some(g) = &mut self.gfx else { return };
-        g.stage.render(&mut self.world, dt);
-        let _ = g.surface.swap_buffers(&g.context);
+        // Nothing changed on screen: skip drawing and presenting altogether.
+        if g.stage.render(&mut self.world, dt) {
+            let _ = g.surface.swap_buffers(&g.context);
+        }
+    }
+
+    /// Grows the window to the whole screen as soon as something goes (or is about to go) above the strip
+    /// over the Dock, and shrinks it back once everything has stayed low for a moment.
+    fn fit_window(&mut self) {
+        let room = self.world.ground + COMPACT_HEIGHT * self.world.s;
+        let need = if self.pointer.pressed.is_some() { f64::INFINITY } else { self.world.headroom() };
+        let compact = if self.compact {
+            need <= room
+        } else if need <= room - 40.0 * self.world.s {
+            self.low_since.get_or_insert_with(Instant::now).elapsed() >= SHRINK_AFTER
+        } else {
+            self.low_since = None;
+            false
+        };
+        if compact != self.compact {
+            self.compact = compact;
+            self.low_since = None;
+            self.layout();
+        }
+    }
+
+    /// Every few seconds: sends a pet out if a calendar event starts in 10, 5 or 1 minutes.
+    fn check_calendar(&mut self) {
+        if !settings::calendar_heads_ups() || self.world.pets.is_empty() { return }
+        let soon = REMIND_AT[0] as f64 * 60.0 + 30.0;
+        let events = platform::upcoming_events(soon);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+        if let Some((event, minutes)) = self.reminders.due(&events, now) {
+            self.world.remind(&heads_up_text(&event.title, minutes));
+        }
     }
 
     fn watch_typing(&mut self) {
@@ -332,7 +383,8 @@ impl App {
         g.stage.resize(size.width, size.height, k);
     }
 
-    /// Sizes the window to cover the screen from the menu bar down to just over the Dock or taskbar.
+    /// Sizes the window to cover the screen from the menu bar (or, when compact, from a strip above the Dock)
+    /// down to just over the Dock or taskbar.
     pub fn layout(&mut self) {
         let Some(g) = &self.gfx else { return };
         let k = g.window.scale_factor();
@@ -351,7 +403,9 @@ impl App {
         // the Dock is a step up, and beside it pets stand on the real bottom of the screen.
         let corner_free = shelf.dock.is_some_and(|d| d.hi < shelf.screen.max_x() - 1.0 || d.lo > shelf.screen.min_x() + 1.0);
         let bottom = if corner_free { shelf.screen.max_y() } else { shelf.ground + 6.0 * k };
-        let frame = Rect::new(shelf.screen.x, shelf.top, shelf.screen.w, bottom - shelf.top);
+        let ground = (bottom - shelf.ground) / k;
+        let top = if self.compact { (bottom - (ground + COMPACT_HEIGHT * self.world.s) * k).max(shelf.top) } else { shelf.top };
+        let frame = Rect::new(shelf.screen.x, top, shelf.screen.w, bottom - top);
         if frame != self.window_px {
             self.window_px = frame;
             g.window.set_outer_position(PhysicalPosition::new(frame.x.round() as i32, frame.y.round() as i32));
@@ -360,7 +414,7 @@ impl App {
             }
         }
         let w = &mut self.world;
-        w.ground = (bottom - shelf.ground) / k;
+        w.ground = ground;
         w.below = if corner_free { (w.ground - 2.0).max(0.0) } else { 0.0 };
         (w.dock_start, w.dock_end) = match shelf.dock.filter(|_| corner_free) {
             Some(d) => ((d.lo - shelf.screen.x) / k, (d.hi - shelf.screen.x) / k),
@@ -369,7 +423,8 @@ impl App {
         w.min_x = (shelf.min_x - shelf.screen.x) / k;
         w.max_x = (shelf.max_x - shelf.screen.x) / k;
         w.width = frame.w / k;
-        w.height = frame.h / k;
+        // Pets live on the whole screen even while the window is compact (stage y counts up from the bottom).
+        w.height = (bottom - shelf.top) / k;
         for i in 0..w.pets.len() {
             w.with_pet(i, |w, p| if p.activity != VisitCursor { p.x = w.clamp_x(p, p.x, 20.0) });
         }
@@ -454,6 +509,7 @@ impl App {
             Command::AllowAccessibility => platform::request_accessibility(),
             Command::ToggleVisit => settings::set_visit_idle_cursor(!settings::visit_idle_cursor()),
             Command::ToggleAuto => settings::set_auto(!settings::auto()),
+            Command::ToggleCalendar => settings::set_calendar_heads_ups(!settings::calendar_heads_ups()),
             Command::ToggleLogin => {
                 if let Some(l) = login_item() {
                     let on = l.is_enabled().unwrap_or(false);

@@ -56,6 +56,8 @@ pub struct Stage {
     /// Drawable size in points.
     pub width: f64,
     pub height: f64,
+    /// What the last drawn frame showed; an identical frame isn't drawn again.
+    last_scene: String,
 }
 
 impl Stage {
@@ -71,6 +73,7 @@ impl Stage {
             dpi: 1.0,
             width: 1.0,
             height: 1.0,
+            last_scene: String::new(),
         }
     }
 
@@ -82,7 +85,11 @@ impl Stage {
         self.width = px_w as f64 / dpi;
         self.height = px_h as f64 / dpi;
         self.canvas.set_size(px_w, px_h, dpi as f32);
+        self.last_scene.clear();
     }
+
+    /// Makes the next render draw even if nothing changed (the window was exposed or resized).
+    pub fn invalidate(&mut self) { self.last_scene.clear() }
 
     pub fn forget(&mut self, pet_id: u64) { self.anims.remove(&pet_id); }
 
@@ -97,7 +104,8 @@ impl Stage {
     }
 
     /// Animates every pet's clip (updating its size and reach), then draws the frame.
-    pub fn render(&mut self, world: &mut World, dt: f64) {
+    /// Returns false, drawing nothing, when the frame would look exactly like the last one.
+    pub fn render(&mut self, world: &mut World, dt: f64) -> bool {
         let mut pets = Vec::with_capacity(world.pets.len());
         let ids: Vec<u64> = world.pets.iter().map(|p| p.id).collect();
         self.anims.retain(|id, _| ids.contains(id));
@@ -107,6 +115,15 @@ impl Stage {
             if let Some(d) = self.sync(&mut world.pets[i], ground, s, dt) {
                 pets.push(d);
             }
+        }
+
+        // Moving toys and particles change every frame; otherwise compare what would be drawn.
+        if world.balls.is_empty() && world.butterflies.is_empty() && world.particles.is_empty() {
+            let scene = scene_key(&pets, world);
+            if scene == self.last_scene { return false }
+            self.last_scene = scene;
+        } else {
+            self.last_scene.clear();
         }
 
         let (w, h) = ((self.width * self.dpi) as u32, (self.height * self.dpi) as u32);
@@ -149,6 +166,7 @@ impl Stage {
         // Bowls are drawn in front of the pets, so an eating pet's face dips into its bowl.
         for b in &world.bowls { self.draw_bowl(b, world) }
         self.canvas.flush();
+        true
     }
 
     fn sync(&mut self, p: &mut Pet, ground: f64, s: f64, dt: f64) -> Option<PetDraw> {
@@ -267,6 +285,21 @@ impl Stage {
         self.text_cache.insert(key, img);
         Some(img)
     }
+}
+
+/// Everything that decides how a still frame looks: each pet's image and placement, bubbles and bowls.
+fn scene_key(pets: &[PetDraw], world: &World) -> String {
+    use std::fmt::Write;
+    let mut k = String::new();
+    for d in pets {
+        let r = d.rect;
+        let _ = write!(k, "{:?} {:.1} {:.1} {:.1} {:.1} {} {:.3} {:?}|", d.frame.id, r.x, r.y, r.w, r.h, d.flip, d.sink, d.shadow.map(|(s, a)| (s.x.round(), s.w.round(), (a * 100.0).round())));
+    }
+    for p in &world.pets {
+        if let (Some(text), true) = (&p.bubble, p.sink < 0.5) { let _ = write!(k, "{text} {:.1} {:.1}|", p.x, world.bubble_y(p)); }
+    }
+    for b in &world.bowls { let _ = write!(k, "bowl {:.1} {:.1} {:.2}|", b.x, b.floor, b.food); }
+    k
 }
 
 /// How far through its jump a pet in the air is (0 take-off, 0.5 the top, 1 landing), so the jump clip

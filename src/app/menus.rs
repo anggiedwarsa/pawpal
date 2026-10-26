@@ -33,6 +33,7 @@ pub enum Command {
     AllowAccessibility,
     ToggleVisit,
     ToggleAuto,
+    ToggleCalendar,
     ToggleLogin,
     Quit,
 }
@@ -153,6 +154,9 @@ impl App {
         }
         m.push(check("Visit Cursor After 1 Min Idle", settings::visit_idle_cursor(), Command::ToggleVisit));
         m.push(check("Free Will (auto activities)", settings::auto(), Command::ToggleAuto));
+        if platform::has_calendar() {
+            m.push(check("📅 Calendar Heads-Ups (10, 5, 1 min before)", settings::calendar_heads_ups(), Command::ToggleCalendar));
+        }
         if let Some(on) = self.login_enabled {
             m.push(check("Launch at Login", on, Command::ToggleLogin));
         }

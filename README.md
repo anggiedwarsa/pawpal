@@ -1,10 +1,10 @@
+<p align="center"><img src="assets/icon.png" alt="PawPal icon" width="128"></p>
+
 # 🐾 PawPal
 
 A free, realistic desktop pet that lives on your **Dock** (macOS) or **taskbar** (Windows, Linux).
 Import short clips of your own cat. PawPal cuts the cat out of the background, and it walks, naps,
 chases balls and butterflies, eats from its bowl and keeps you company while you work.
-
-![icon](assets/icon.png)
 
 ## Features
 
@@ -13,6 +13,7 @@ chases balls and butterflies, eats from its bowl and keeps you company while you
 - **Lives anywhere on screen**: drag a pet up the screen and it makes a new home there. Food, balls and butterflies appear on the level the pet is on.
 - **Bedtime in the corner**: a sleepy pet (or one sent to sleep) hops down level by level, walks to the end of the Dock and hops down into the bottom-right corner of the screen to nap. Click it and it mumbles "What's up? I'm so sleepy… 😴"; double-click wakes it for 30 seconds before it goes back to bed.
 - **Movie mode**: when a video or app goes full screen, pets duck down and peek from the bottom-right corner with just the top of their face showing, then come back out afterwards.
+- **Calendar heads-ups**: 10, 5 and 1 minute before an event, a pet walks out, jumps to the middle of the screen and tells you what's coming up for 30 seconds. Click it (or wait) and it jumps back to the same spot and height and carries on with what it was doing. Turn it off in the tray menu.
 - **Keeps out of your way**: while you type, pets sit and watch, and move away from the text you're typing (exactly where the OS reports the caret, otherwise around the front window).
 - **Click-through**: clicks pass to the apps underneath unless the cursor is over a pet or a toy.
 - **Tray menu**: feed, give treats, throw a ball, release a butterfly, pick activities, change size, launch at login.
@@ -25,6 +26,7 @@ chases balls and butterflies, eats from its bowl and keeps you company while you
 | Avoids typing | exact caret (Accessibility) | exact caret in Win32 apps, else front window | front window |
 | Right-click pet menu | ✅ | ✅ | via the tray menu |
 | Background removal | edge flood-fill | edge flood-fill | edge flood-fill |
+| Calendar heads-ups | Calendar app accounts (asks for access once) | — | — |
 | Full-screen detection | a front-app window covers the screen | foreground window covers its monitor | `_NET_WM_STATE_FULLSCREEN` |
 
 On Wayland sessions PawPal runs through XWayland, because Wayland doesn't let apps place their windows.

@@ -1,6 +1,7 @@
 //! The simulation: how pets behave and how toys move. Knows nothing about drawing or the OS.
 
 mod behavior;
+pub mod calendar;
 mod interaction;
 mod props_physics;
 mod world;

@@ -27,7 +27,9 @@ fastrand = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString", "NSUserDefaults", "NSArray", "NSDictionary", "NSValue", "NSGeometry"] }
+objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "EKEventStore", "EKEvent", "EKCalendarItem", "EKObject", "EKTypes", "EKCalendar", "block2"] }
+block2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSUserDefaults", "NSArray", "NSDictionary", "NSValue", "NSGeometry", "NSDate", "NSBundle", "NSError"] }
 objc2-app-kit = { version = "0.3", features = ["NSScreen", "NSWindow", "NSView", "NSRunningApplication", "NSWorkspace", "NSEvent", "NSResponder", "NSGraphics", "NSApplication"] }
 core-foundation = "0.10"
 plist = "1"

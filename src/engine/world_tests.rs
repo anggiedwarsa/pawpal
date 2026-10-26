@@ -113,3 +113,36 @@ fn stepping_tracks_the_cursor_and_visits_after_idling() {
     w.step(0.1, pt(10.0, 10.0), 0.2);
     assert_eq!(w.mouse_still, 0.0, "typing counts as being around");
 }
+
+#[test]
+fn headroom_covers_pets_and_their_bubbles() {
+    let mut w = world(1);
+    w.pets[0].size = Size { width: 60.0, height: 50.0 };
+    assert_eq!(w.headroom(), w.ground + 50.0);
+    w.pets[0].say("Meow!", 2.0);
+    assert!(w.headroom() > w.ground + 100.0, "room for the bubble above it");
+}
+
+#[test]
+fn a_pet_about_to_hop_up_needs_room_before_it_leaves() {
+    let mut w = world(1);
+    w.with_pet(0, |w, p| {
+        w.start(p, Hop, true);
+        p.leap_to = pt(p.x, 300.0);
+    });
+    assert!(w.headroom() >= 300.0, "the window grows before the jump, not halfway through it");
+}
+
+#[test]
+fn pets_that_can_go_anywhere_need_the_whole_screen() {
+    let mut w = world(1);
+    w.with_pet(0, |w, p| w.start(p, Dragged, true));
+    assert_eq!(w.headroom(), f64::INFINITY);
+    let mut w = world(1);
+    w.remind("📅 Standup in 5 minutes");
+    assert_eq!(w.headroom(), f64::INFINITY);
+    let mut w = world(1);
+    w.pets[0].y = 200.0;
+    w.with_pet(0, |w, p| w.settle(p));
+    assert_eq!(w.headroom(), f64::INFINITY, "a pet living up the screen");
+}

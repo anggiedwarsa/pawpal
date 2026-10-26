@@ -399,3 +399,60 @@ fn ax_value<T: Default>(v: CFTypeRef, kind: u32) -> Option<T> {
     let mut out = T::default();
     unsafe { AXValueGetValue(v, kind, &mut out as *mut T as *mut c_void) }.then_some(out)
 }
+
+// Calendar
+
+thread_local! {
+    static EVENTS: std::cell::OnceCell<Option<objc2::rc::Retained<objc2_event_kit::EKEventStore>>> = const { std::cell::OnceCell::new() };
+}
+
+/// Calendar heads-ups work here: events come from the Calendar app's accounts (iCloud, Google, Exchange…).
+pub fn has_calendar() -> bool { true }
+
+/// macOS ends any app that asks for calendar access without saying why in its Info.plist,
+/// so a bare binary (cargo run) never asks.
+fn can_ask_for_calendar() -> bool {
+    objc2_foundation::NSBundle::mainBundle()
+        .objectForInfoDictionaryKey(&NSString::from_str("NSCalendarsFullAccessUsageDescription"))
+        .is_some()
+}
+
+/// Events starting in the next `within` seconds. The first call asks for calendar access; until it's
+/// granted (or if it's refused) there are none.
+pub fn upcoming_events(within: f64) -> Vec<crate::domain::CalendarEvent> {
+    use objc2_event_kit::{EKAuthorizationStatus, EKEntityType, EKEventStore};
+    use objc2_foundation::{NSDate, NSObjectProtocol};
+    EVENTS.with(|cell| {
+        let Some(store) = cell.get_or_init(|| can_ask_for_calendar().then(|| unsafe { EKEventStore::new() })) else { return vec![] };
+        let status = unsafe { EKEventStore::authorizationStatusForEntityType(EKEntityType::Event) };
+        if status == EKAuthorizationStatus::NotDetermined {
+            let done = block2::RcBlock::new(|_granted: objc2::runtime::Bool, _err: *mut objc2_foundation::NSError| {});
+            let ptr = block2::RcBlock::as_ptr(&done);
+            unsafe {
+                if store.respondsToSelector(objc2::sel!(requestFullAccessToEventsWithCompletion:)) {
+                    store.requestFullAccessToEventsWithCompletion(ptr);
+                } else {
+                    // macOS 13, which has only the older request.
+                    #[allow(deprecated)]
+                    store.requestAccessToEntityType_completion(EKEntityType::Event, ptr);
+                }
+            }
+            return vec![];
+        }
+        if status != EKAuthorizationStatus::FullAccess { return vec![] }
+        unsafe {
+            let (from, to) = (NSDate::now(), NSDate::dateWithTimeIntervalSinceNow(within));
+            let query = store.predicateForEventsWithStartDate_endDate_calendars(&from, &to, None);
+            store
+                .eventsMatchingPredicate(&query)
+                .iter()
+                .filter(|e| !e.isAllDay())
+                .map(|e| {
+                    let start = e.startDate().timeIntervalSince1970();
+                    let id = e.eventIdentifier().map_or_else(String::new, |s| s.to_string());
+                    crate::domain::CalendarEvent { id: format!("{id}@{start}"), title: e.title().to_string(), start }
+                })
+                .collect()
+        }
+    })
+}

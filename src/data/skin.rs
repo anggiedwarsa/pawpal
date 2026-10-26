@@ -82,6 +82,7 @@ pub fn fallbacks(a: Activity) -> &'static [&'static str] {
         Dance => &["play", "idle"],
         Wave | Meow => &["meow", "sit"],
         Peekaboo | Hide => &["sit", "idle"],
+        Remind => &["sit", "idle"],
         PlayFriend => &["play", "run"],
         Petted => &["petted", "lie", "sit"],
         Hop => &["jump", "play", "idle"],

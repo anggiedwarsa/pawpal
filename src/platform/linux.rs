@@ -139,3 +139,7 @@ pub fn prompt_text(title: &str, message: &str, default: &str) -> Option<String> 
 }
 
 pub fn lift_subject(_img: &RgbaImage) -> Option<Option<RgbaImage>> { None }
+
+/// No calendar to read here yet (an iCal feed could be added); no heads-ups.
+pub fn has_calendar() -> bool { false }
+pub fn upcoming_events(_within: f64) -> Vec<crate::domain::CalendarEvent> { Vec::new() }

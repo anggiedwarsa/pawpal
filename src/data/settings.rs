@@ -39,6 +39,8 @@ struct Prefs {
     /// Skins whose clips are shown mirrored.
     flipped: BTreeSet<String>,
     asked_accessibility: Option<String>,
+    /// A pet comes out 10, 5 and 1 minute before calendar events.
+    calendar_heads_ups: bool,
 }
 
 impl Default for Prefs {
@@ -51,6 +53,7 @@ impl Default for Prefs {
             pets: Vec::new(),
             flipped: BTreeSet::new(),
             asked_accessibility: None,
+            calendar_heads_ups: true,
         }
     }
 }
@@ -115,6 +118,8 @@ pub fn toggle_flipped(skin: &str) {
 }
 pub fn asked_accessibility() -> Option<String> { prefs().asked_accessibility.clone() }
 pub fn set_asked_accessibility(v: String) { update(|p| p.asked_accessibility = Some(v)) }
+pub fn calendar_heads_ups() -> bool { prefs().calendar_heads_ups }
+pub fn set_calendar_heads_ups(v: bool) { update(|p| p.calendar_heads_ups = v) }
 
 /// Carries settings over from the Swift build, which kept them in UserDefaults.
 #[cfg(all(target_os = "macos", not(test)))]

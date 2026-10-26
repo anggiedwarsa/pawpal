@@ -28,6 +28,8 @@ pub enum Activity {
     Hop,
     /// Peeking from the bottom-right corner while something plays full screen.
     Hide,
+    /// Out in the middle of the screen telling the user an event is about to start.
+    Remind,
     Dragged,
     Falling,
 }
@@ -62,6 +64,7 @@ impl Activity {
             Petted => "🥰 Get Petted",
             Hop => "🪜 Hop Up / Down",
             Hide => "🙈 Hide in the Corner",
+            Remind => "📅 Calendar Heads-Up",
             Dragged => "Dragged",
             Falling => "Falling",
         }

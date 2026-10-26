@@ -17,8 +17,9 @@ impl World {
         let s = self.s;
         // Down in the corner (when pets keep to the Dock) there's only room to nap, hide or bounce;
         // anything else starts by hopping back up.
-        let a = if p.floor < 0.0 && !self.low_roam() && !matches!(a, Sleep | Hide | Dragged | Jump | Falling | Petted | Hop) { Hop } else { a };
-        if matches!(a, Dragged | Hop) { p.climbing = false }
+        let a = if p.floor < 0.0 && !self.low_roam() && !matches!(a, Sleep | Hide | Dragged | Jump | Falling | Petted | Hop | Remind) { Hop } else { a };
+        if matches!(a, Dragged | Hop | Remind) { p.climbing = false }
+        p.resume = None;
         p.activity = a;
         p.age = 0.0;
         p.step = 0;
@@ -107,6 +108,7 @@ impl World {
                 if p.bubble.is_none() { p.say(pick(p.species.sounds()), 2.6) }
             }
             Peekaboo => p.timer = 20.0,
+            Remind => p.timer = f64::INFINITY,
             Hide => {
                 p.timer = f64::INFINITY;
                 p.target_x = Some(self.corner_x(p, self.corner_slot(p, Hide)));
@@ -169,7 +171,7 @@ impl World {
     }
 
     /// Moves toward tx; returns true once arrived (or straight away for pets that can't travel).
-    fn move_to(&self, p: &mut Pet, tx: f64, speed: f64) -> bool {
+    pub(super) fn move_to(&self, p: &mut Pet, tx: f64, speed: f64) -> bool {
         if !p.can_move() {
             p.vx = 0.0;
             return true;
@@ -196,7 +198,7 @@ impl World {
         update_needs(p, dt);
         if let Some(left) = p.back_to_sleep {
             p.back_to_sleep = Some(left - dt);
-            if left - dt <= 0.0 && !matches!(p.activity, Dragged | Falling | Hop | VisitCursor | Hide) {
+            if left - dt <= 0.0 && !matches!(p.activity, Dragged | Falling | Hop | VisitCursor | Hide | Remind) {
                 p.back_to_sleep = None;
                 self.start(p, Sleep, false);
                 p.say("*yawn* Back to bed… 💤", 2.0);
@@ -326,6 +328,7 @@ impl World {
             }
             Peekaboo => self.peekaboo(p, dt),
             Hide => self.hide(p, dt),
+            Remind => self.remind_step(p, dt),
             PlayFriend => self.play_friend(p),
             Petted => {
                 p.vx = 0.0;
@@ -354,6 +357,7 @@ impl World {
 
     fn apply_physics(&self, p: &mut Pet, dt: f64) {
         if p.leaping || matches!(p.activity, Dragged | VisitCursor | Hide) { return }
+        if p.activity == Remind && p.step == 2 { return } // standing in mid-screen
         if p.y > p.floor || p.vy != 0.0 {
             p.vy -= 1200.0 * self.s * dt;
             p.y += p.vy * dt;
@@ -516,7 +520,7 @@ impl World {
     }
 
     /// Moves along the arc from leap_from to leap_to; on landing, makes that height home and returns true.
-    fn leap(&mut self, p: &mut Pet, dt: f64) -> bool {
+    pub(super) fn leap(&mut self, p: &mut Pet, dt: f64) -> bool {
         let s = self.s;
         let dist = (p.leap_to.x - p.leap_from.x).hypot(p.leap_to.y - p.leap_from.y);
         let dur = clamp(dist / (450.0 * s), 0.45, 1.0);

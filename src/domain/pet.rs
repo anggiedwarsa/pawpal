@@ -5,6 +5,17 @@ use crate::data::skin::Skin;
 use crate::support::{Point, Size, Span};
 
 /// A pet's state: where it is, what it's doing and how it feels. Rendering lives in the render layer.
+/// What a pet was doing before a calendar heads-up, and where, so it can go back to it.
+#[derive(Clone, Debug)]
+pub struct Resume {
+    pub activity: Activity,
+    pub timer: f64,
+    pub commanded: bool,
+    pub x: f64,
+    pub floor: f64,
+    pub span: Option<Span>,
+}
+
 #[derive(Default)]
 pub struct Pet {
     /// Stable identity (the Swift version compared objects with ===); 0 is never a real pet.
@@ -47,6 +58,8 @@ pub struct Pet {
     pub leap_k: f64,
     /// Hopping up onto the Dock from the screen bottom beside it, in the middle of whatever it was doing.
     pub climbing: bool,
+    /// What it was doing before going out to give a calendar heads-up.
+    pub resume: Option<Resume>,
 
     // Needs, 0…100.
     pub hunger: f64,

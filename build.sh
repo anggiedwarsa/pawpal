@@ -34,6 +34,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Your pet tells you 10, 5 and 1 minute before an event starts.</string>
+  <key>NSCalendarsUsageDescription</key><string>Your pet tells you 10, 5 and 1 minute before an event starts.</string>
 </dict>
 </plist>
 PLIST

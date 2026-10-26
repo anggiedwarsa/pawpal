@@ -11,7 +11,10 @@ pub const WAKE_TIME: f64 = 30.0;
 impl World {
     /// A click (or double-click) on a pet that wasn't dragged.
     pub fn clicked(&mut self, p: &mut Pet, clicks: u32) {
-        if p.activity == VisitCursor {
+        if p.activity == Remind {
+            // Got it: the pet goes back to what it was doing.
+            self.end_remind(p);
+        } else if p.activity == VisitCursor {
             if clicks >= 2 {
                 self.go_home(p, true);
                 p.say("Okay, going home!", 2.0);
@@ -50,7 +53,7 @@ impl World {
         self.fullscreen = on;
         for i in 0..self.pets.len() {
             self.with_pet(i, |w, p| {
-                if on && p.activity != Dragged {
+                if on && !matches!(p.activity, Dragged | Remind) {
                     w.start(p, Hide, false);
                 } else if !on && p.activity == Hide {
                     w.start(p, Idle, false);

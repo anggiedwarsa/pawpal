@@ -55,7 +55,7 @@ pub const ROAM: f64 = 160.0;
 /// Food and toys don't need it: they appear on the level of the pet they're for.
 pub fn on_dock(a: Activity) -> bool { matches!(a, PlayFriend) }
 /// Activities typing doesn't interrupt.
-fn busy(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | Hop | Sleep | Eat | Peekaboo | Petted | Hide) }
+fn busy(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | Hop | Sleep | Eat | Peekaboo | Petted | Hide | Remind) }
 
 impl World {
     pub fn new() -> World {
@@ -129,6 +129,22 @@ impl World {
             self.with_pet(i, |w, p| w.update(p, dt));
         }
         self.update_props(dt);
+    }
+
+    /// How high above the window's bottom edge (points) anything is or is about to be drawn;
+    /// infinite when a pet may go anywhere (dragged, visiting the cursor, giving a heads-up).
+    pub fn headroom(&self) -> f64 {
+        let mut top: f64 = 0.0;
+        for p in &self.pets {
+            if matches!(p.activity, Dragged | VisitCursor | Remind) || p.floor > 0.0 { return f64::INFINITY }
+            let y = if p.leaping { p.y.max(p.leap_to.y).max(p.leap_from.y) } else { p.y };
+            let bubble = if p.bubble.is_some() { 60.0 } else { 0.0 };
+            top = top.max(self.ground + y + p.size.height + bubble);
+        }
+        for q in &self.particles { top = top.max(q.p.y + q.size) }
+        for b in &self.butterflies { top = top.max(self.ground + b.floor + b.y + 30.0 * self.s) }
+        for b in &self.balls { top = top.max(self.ground + b.floor + b.y + 30.0 * self.s) }
+        top
     }
 
     pub fn is_calm(&self) -> bool {
