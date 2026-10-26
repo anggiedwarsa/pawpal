@@ -1,0 +1,142 @@
+//! User preferences, stored as JSON in the platform's config folder.
+
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex, MutexGuard};
+
+use serde::{Deserialize, Serialize};
+
+use crate::domain::Species;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WalkArea {
+    #[default]
+    Dock,
+    Screen,
+}
+
+/// A pet as saved between launches.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PetSave {
+    pub name: String,
+    pub species: Species,
+    /// Name of the pet's clip skin.
+    pub skin: Option<String>,
+    pub hunger: f64,
+    pub energy: f64,
+    pub happiness: f64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct Prefs {
+    scale: f64,
+    auto: bool,
+    visit_idle_cursor: bool,
+    walk_area: WalkArea,
+    pets: Vec<PetSave>,
+    /// Skins whose clips are shown mirrored.
+    flipped: BTreeSet<String>,
+    asked_accessibility: Option<String>,
+}
+
+impl Default for Prefs {
+    fn default() -> Prefs {
+        Prefs {
+            scale: 1.1,
+            auto: true,
+            visit_idle_cursor: false,
+            walk_area: WalkArea::Dock,
+            pets: Vec::new(),
+            flipped: BTreeSet::new(),
+            asked_accessibility: None,
+        }
+    }
+}
+
+static PREFS: LazyLock<Mutex<Prefs>> = LazyLock::new(|| Mutex::new(load()));
+
+fn path() -> PathBuf {
+    // Tests get a throwaway file, so they never touch the user's real settings.
+    if cfg!(test) {
+        return std::env::temp_dir().join(format!("pawpal-test-{}", std::process::id())).join("settings.json");
+    }
+    dirs::config_dir().unwrap_or_else(std::env::temp_dir).join("PawPal").join("settings.json")
+}
+
+fn load() -> Prefs {
+    if let Ok(text) = std::fs::read_to_string(path()) {
+        if let Ok(p) = serde_json::from_str(&text) {
+            return p;
+        }
+    }
+    #[cfg(all(target_os = "macos", not(test)))]
+    if let Some(p) = migrate_from_user_defaults() {
+        return p;
+    }
+    Prefs::default()
+}
+
+fn prefs() -> MutexGuard<'static, Prefs> {
+    PREFS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Changes preferences and writes them straight to disk.
+fn update(f: impl FnOnce(&mut Prefs)) {
+    let mut p = prefs();
+    f(&mut p);
+    let file = path();
+    if let Some(dir) = file.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(text) = serde_json::to_string_pretty(&*p) {
+        let _ = std::fs::write(file, text);
+    }
+}
+
+pub fn scale() -> f64 { let v = prefs().scale; if v > 0.0 { v } else { 1.1 } }
+pub fn set_scale(v: f64) { update(|p| p.scale = v) }
+pub fn auto() -> bool { prefs().auto }
+pub fn set_auto(v: bool) { update(|p| p.auto = v) }
+pub fn visit_idle_cursor() -> bool { prefs().visit_idle_cursor }
+pub fn set_visit_idle_cursor(v: bool) { update(|p| p.visit_idle_cursor = v) }
+pub fn walk_area() -> WalkArea { prefs().walk_area }
+pub fn set_walk_area(v: WalkArea) { update(|p| p.walk_area = v) }
+pub fn pets() -> Vec<PetSave> { prefs().pets.clone() }
+pub fn set_pets(v: Vec<PetSave>) { update(|p| p.pets = v) }
+pub fn flipped(skin: &str) -> bool { prefs().flipped.contains(skin) }
+pub fn toggle_flipped(skin: &str) {
+    update(|p| {
+        if !p.flipped.remove(skin) {
+            p.flipped.insert(skin.to_string());
+        }
+    })
+}
+pub fn asked_accessibility() -> Option<String> { prefs().asked_accessibility.clone() }
+pub fn set_asked_accessibility(v: String) { update(|p| p.asked_accessibility = Some(v)) }
+
+/// Carries settings over from the Swift build, which kept them in UserDefaults.
+#[cfg(all(target_os = "macos", not(test)))]
+fn migrate_from_user_defaults() -> Option<Prefs> {
+    let file = dirs::home_dir()?.join("Library/Preferences/id.my.rihanna.pawpal.plist");
+    let plist::Value::Dictionary(d) = plist::Value::from_file(file).ok()? else { return None };
+    let mut p = Prefs::default();
+    if let Some(v) = d.get("scale").and_then(|v| v.as_real()) { p.scale = v }
+    if let Some(v) = d.get("auto").and_then(|v| v.as_boolean()) { p.auto = v }
+    if let Some(v) = d.get("visitIdleCursor").and_then(|v| v.as_boolean()) { p.visit_idle_cursor = v }
+    if d.get("walkArea").and_then(|v| v.as_string()) == Some("screen") { p.walk_area = WalkArea::Screen }
+    if let Some(data) = d.get("pets").and_then(|v| v.as_data()) {
+        p.pets = serde_json::from_slice(data).unwrap_or_default();
+    }
+    for (k, v) in d.iter() {
+        if let (Some(name), Some(true)) = (k.strip_prefix("flip."), v.as_boolean()) {
+            p.flipped.insert(name.to_string());
+        }
+    }
+    Some(p)
+}
+
+#[cfg(test)]
+#[path = "settings_tests.rs"]
+mod tests;

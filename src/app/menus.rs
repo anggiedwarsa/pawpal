@@ -1,0 +1,209 @@
+//! The 🐾 tray menu and the right-click menu on each pet, described as plain data
+//! so the tray is only rebuilt when something in it actually changed.
+
+use std::collections::HashMap;
+
+use tray_icon::menu::{CheckMenuItem, IsMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+
+use super::App;
+use crate::data::settings::{self, WalkArea};
+use crate::data::skin::ACTIONS;
+use crate::domain::Activity::{self, *};
+use crate::domain::Pet;
+use crate::platform;
+
+/// What a menu item does when chosen.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Command {
+    Do { pets: Vec<u64>, activity: Activity },
+    ComeHome(u64),
+    FeedPet(u64),
+    FeedAll,
+    Treat,
+    ThrowBall,
+    ReleaseButterfly,
+    Rename(u64),
+    Flip(String),
+    Import { skin: Option<String>, action: &'static str },
+    Remove(u64),
+    Adopt(String),
+    OpenClips,
+    Scale(f64),
+    Walk(WalkArea),
+    AllowAccessibility,
+    ToggleVisit,
+    ToggleAuto,
+    ToggleLogin,
+    Quit,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Node {
+    Item { title: String, cmd: Option<Command>, checked: Option<bool> },
+    Sub { title: String, children: Vec<Node> },
+    Sep,
+}
+
+fn item(title: impl Into<String>, cmd: Command) -> Node { Node::Item { title: title.into(), cmd: Some(cmd), checked: None } }
+fn check(title: impl Into<String>, on: bool, cmd: Command) -> Node { Node::Item { title: title.into(), cmd: Some(cmd), checked: Some(on) } }
+fn note(title: impl Into<String>) -> Node { Node::Item { title: title.into(), cmd: None, checked: None } }
+fn sub(title: impl Into<String>, children: Vec<Node>) -> Node { Node::Sub { title: title.into(), children } }
+
+/// Activities, with ones the pet has no clip for greyed out and saying which clip to import.
+fn activity_items(pets: &[&Pet]) -> Vec<Node> {
+    Activity::MENU
+        .iter()
+        .map(|&a| {
+            let able: Vec<u64> = pets.iter().filter(|p| p.supports(a)).map(|p| p.id).collect();
+            if able.is_empty() {
+                let missing = pets.first().and_then(|p| p.skin.as_ref()).map_or("walk", |s| s.missing_clip(a));
+                return note(format!("{}  — needs a “{missing}” clip", a.title()));
+            }
+            item(a.title(), Command::Do { pets: able, activity: a })
+        })
+        .collect()
+}
+
+fn bar(v: f64) -> String {
+    let n = ((v / 10.0).round() as usize).min(10);
+    "■".repeat(n) + &"□".repeat(10 - n)
+}
+
+fn stats_items(p: &Pet) -> Vec<Node> {
+    let mood = if p.happiness > 75.0 { "😊 Happy" } else if p.happiness > 40.0 { "🙂 Okay" } else { "😢 Sad" };
+    let moves = p.skin.as_ref().map_or("none".to_string(), |s| s.clips.keys().cloned().collect::<Vec<_>>().join(", "));
+    vec![
+        note(format!("{} · {mood}", p.name)),
+        note(format!("Food   {}", bar(100.0 - p.hunger))),
+        note(format!("Energy {}", bar(p.energy))),
+        note(format!("Joy    {}", bar(p.happiness))),
+        note(format!("Moves: {moves}")),
+    ]
+}
+
+fn import_items(skin: Option<&str>) -> Vec<Node> {
+    ACTIONS.iter().map(|(name, title, _)| item(format!("{title}…"), Command::Import { skin: skin.map(String::from), action: name })).collect()
+}
+
+pub fn pet_menu(p: &Pet) -> Vec<Node> {
+    let mut m = stats_items(p);
+    m.push(Node::Sep);
+    m.push(sub("Do Activity", activity_items(&[p])));
+    if p.activity == VisitCursor || p.floor > 0.0 { m.push(item("🏠 Come Home", Command::ComeHome(p.id))) }
+    m.push(item("🍗 Feed", Command::FeedPet(p.id)));
+    m.push(item("✏️ Rename…", Command::Rename(p.id)));
+    if let Some(skin) = &p.skin {
+        if let Some(credit) = &skin.credit { m.push(note(credit.trim())) }
+        m.push(item("↔️ Flip Direction", Command::Flip(skin.name.clone())));
+        m.push(sub(format!("➕ Add a Clip for {}", skin.name), import_items(Some(&skin.name))));
+    }
+    m.push(item("👋 Say Goodbye (Remove)", Command::Remove(p.id)));
+    m
+}
+
+impl App {
+    pub fn tray_menu(&self) -> Vec<Node> {
+        let mut m = Vec::new();
+        let pets: Vec<&Pet> = self.world.pets.iter().collect();
+        if pets.is_empty() {
+            m.push(note("No pets yet — import a clip of a real cat to start"));
+        } else {
+            m.push(sub("All Pets: Do Activity", activity_items(&pets)));
+            m.push(item("🍗 Feed Everyone", Command::FeedAll));
+            m.push(item("🐟 Give Treats", Command::Treat));
+            m.push(item("⚽ Throw a Ball", Command::ThrowBall));
+            m.push(item("🦋 Release a Butterfly", Command::ReleaseButterfly));
+            m.push(Node::Sep);
+            for p in &pets {
+                m.push(sub(format!("🐈 {}", p.name), pet_menu(p)));
+            }
+        }
+
+        let mut adopt: Vec<Node> = self
+            .skins
+            .iter()
+            .map(|(name, s)| item(format!("{name}  ({})", s.clips.keys().cloned().collect::<Vec<_>>().join(", ")), Command::Adopt(name.clone())))
+            .collect();
+        if !adopt.is_empty() { adopt.push(Node::Sep) }
+        adopt.push(sub("Import Clip (video, GIF or WebP)", import_items(None)));
+        adopt.push(item("Open Clips Folder", Command::OpenClips));
+        adopt.push(note("Tip: same cat, side view, plain background, 2–6 s"));
+        m.push(sub("➕ Adopt / Import a Pet", adopt));
+        m.push(Node::Sep);
+
+        let scale = settings::scale();
+        m.push(sub(
+            "Size",
+            [("Small", 0.8), ("Medium", 1.1), ("Large", 1.5), ("Huge", 2.0)]
+                .into_iter()
+                .map(|(name, v)| check(name, (scale - v).abs() < 0.01, Command::Scale(v)))
+                .collect(),
+        ));
+        let walk = settings::walk_area();
+        let shelf = if cfg!(target_os = "macos") { "On the Dock" } else { "On the Taskbar" };
+        m.push(sub(
+            "Walk Area",
+            vec![
+                check(shelf, walk == WalkArea::Dock, Command::Walk(WalkArea::Dock)),
+                check("Whole Screen Width", walk == WalkArea::Screen, Command::Walk(WalkArea::Screen)),
+            ],
+        ));
+        if platform::has_accessibility_setting() && !platform::accessibility_trusted() {
+            m.push(item("Fit Dock & Avoid My Typing (allow Accessibility)…", Command::AllowAccessibility));
+        }
+        m.push(check("Visit Cursor After 1 Min Idle", settings::visit_idle_cursor(), Command::ToggleVisit));
+        m.push(check("Free Will (auto activities)", settings::auto(), Command::ToggleAuto));
+        if let Some(on) = self.login_enabled {
+            m.push(check("Launch at Login", on, Command::ToggleLogin));
+        }
+        m.push(Node::Sep);
+        m.push(item("Quit PawPal", Command::Quit));
+        m
+    }
+}
+
+/// Something menu items can be added to.
+trait Container {
+    fn add(&self, item: &dyn IsMenuItem);
+}
+impl Container for Menu {
+    fn add(&self, item: &dyn IsMenuItem) { let _ = self.append(item); }
+}
+impl Container for Submenu {
+    fn add(&self, item: &dyn IsMenuItem) { let _ = self.append(item); }
+}
+
+/// Builds real menu items, recording which command each id stands for. `prefix` keeps ids unique across menus.
+pub fn materialize(nodes: &[Node], prefix: &str) -> (Menu, HashMap<MenuId, Command>) {
+    let menu = Menu::new();
+    let mut cmds = HashMap::new();
+    let mut n = 0;
+    fill(&menu, nodes, prefix, &mut n, &mut cmds);
+    (menu, cmds)
+}
+
+fn fill(parent: &dyn Container, nodes: &[Node], prefix: &str, n: &mut u32, cmds: &mut HashMap<MenuId, Command>) {
+    for node in nodes {
+        match node {
+            Node::Sep => parent.add(&PredefinedMenuItem::separator()),
+            Node::Sub { title, children } => {
+                let s = Submenu::new(title, true);
+                fill(&s, children, prefix, n, cmds);
+                parent.add(&s);
+            }
+            Node::Item { title, cmd, checked } => {
+                *n += 1;
+                let id = MenuId::new(format!("{prefix}{n}"));
+                if let Some(c) = cmd { cmds.insert(id.clone(), c.clone()); }
+                match checked {
+                    Some(on) => parent.add(&CheckMenuItem::with_id(id, title, cmd.is_some(), *on, None)),
+                    None => parent.add(&MenuItem::with_id(id, title, cmd.is_some(), None)),
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "menus_tests.rs"]
+mod tests;
