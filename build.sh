@@ -1,13 +1,22 @@
 #!/bin/zsh
-# Builds PawPal.app into ./build from the Rust sources (pass --install to copy it to /Applications).
+# Builds PawPal.app into ./build from the Rust sources (pass --install to copy it to /Applications,
+# --universal to build one app for both Apple silicon and Intel Macs, as the release does).
 # On Windows and Linux, `cargo build --release` is all you need; the binary is target/release/pawpal.
 set -e
 cd "$(dirname "$0")"
-cargo build --release
+VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 APP=build/PawPal.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp target/release/pawpal "$APP/Contents/MacOS/PawPal"
+if [[ " $* " == *" --universal "* ]]; then
+  rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null
+  cargo build --release --target aarch64-apple-darwin
+  cargo build --release --target x86_64-apple-darwin
+  lipo -create target/aarch64-apple-darwin/release/pawpal target/x86_64-apple-darwin/release/pawpal -output "$APP/Contents/MacOS/PawPal"
+else
+  cargo build --release
+  cp target/release/pawpal "$APP/Contents/MacOS/PawPal"
+fi
 
 # App icon: every size macOS wants, from assets/icon.png.
 ICONSET=build/AppIcon.iconset
@@ -18,7 +27,7 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONSET"
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -29,8 +38,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>PawPal</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
@@ -41,7 +50,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 codesign --force --sign - "$APP" >/dev/null
 echo "Built $APP"
-if [[ "$1" == "--install" ]]; then
+if [[ " $* " == *" --install "* ]]; then
   osascript -e 'quit app "PawPal"' 2>/dev/null || true
   sleep 1
   rm -rf /Applications/PawPal.app

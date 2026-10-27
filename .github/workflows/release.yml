@@ -1,0 +1,143 @@
+# Builds ready-to-install PawPal for macOS, Windows and Linux and publishes them as a GitHub release.
+# Runs when a version tag is pushed, e.g. `git tag v1.0.0 && git push origin v1.0.0`; the tag must match Cargo.toml.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Check the tag matches Cargo.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "$tag" != "$cargo" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match Cargo.toml version $cargo"
+            exit 1
+          fi
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    runs-on: macos-14
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test
+      - name: Build PawPal.app (Apple silicon + Intel)
+        run: ./build.sh --universal
+      - name: Make the disk image
+        run: |
+          mkdir dmg
+          cp -R build/PawPal.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "PawPal" -srcfolder dmg -ov -format UDZO "PawPal-$VERSION-macOS.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: PawPal-*-macOS.dmg
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release
+      - name: Gather the files to install
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target\release\pawpal.exe dist\
+          python -m pip install --quiet pillow
+          python -c "from PIL import Image; Image.open('assets/icon.png').save('dist/pawpal.ico', sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])"
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            $inno = "${env:ProgramFiles(x86)}\Inno Setup 6"
+            if (-not (Test-Path "$inno\ISCC.exe")) { choco install innosetup -y --no-progress }
+            $env:PATH += ";$inno"
+          }
+          iscc /DVersion=$env:VERSION /DSource="$PWD\dist" /O"$PWD" packaging\windows\pawpal.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: PawPal-*-Windows-Setup.exe
+
+  linux:
+    needs: version
+    # The oldest supported runner, so the binary runs on older distributions too.
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libwayland-dev libxkbcommon-dev
+      - name: Build
+        run: cargo build --release
+      - name: Debian package
+        run: |
+          cargo install cargo-deb --locked
+          cargo deb --no-build --deb-revision "" --output "pawpal_${VERSION}_amd64.deb"
+      - name: Tarball
+        run: |
+          mkdir -p "PawPal-$VERSION"
+          cp target/release/pawpal packaging/linux/pawpal.desktop README.md "PawPal-$VERSION/"
+          cp assets/icon.png "PawPal-$VERSION/pawpal.png"
+          tar czf "PawPal-$VERSION-Linux-x86_64.tar.gz" "PawPal-$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            pawpal_*_amd64.deb
+            PawPal-*-Linux-x86_64.tar.gz
+
+  release:
+    needs: [version, macos, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: PawPal ${{ needs.version.outputs.version }}
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            ## Install
+
+            - **macOS** (Apple silicon and Intel, macOS 13+): open `PawPal-${{ needs.version.outputs.version }}-macOS.dmg` and drag PawPal into Applications. The app isn't notarized yet, so the first time, right-click PawPal → **Open** → **Open** (or run `xattr -dr com.apple.quarantine /Applications/PawPal.app`).
+            - **Windows** (10/11, 64-bit): run `PawPal-${{ needs.version.outputs.version }}-Windows-Setup.exe`. It installs for your user only, no admin needed. SmartScreen may warn about an unknown publisher: **More info** → **Run anyway**.
+            - **Linux** (X11 or XWayland): `sudo apt install ./pawpal_${{ needs.version.outputs.version }}_amd64.deb` on Debian/Ubuntu, or unpack the `.tar.gz` anywhere and run `./pawpal`.
+
+            Importing video clips needs **ffmpeg** on your `PATH` (GIF, WebP and APNG work without it).

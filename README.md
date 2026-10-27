@@ -43,11 +43,21 @@ chases balls and butterflies, eats from its bowl and keeps you company while you
 
 On Wayland sessions PawPal runs through XWayland, because Wayland doesn't let apps place their windows.
 
-## Install
+## Download
+
+Ready-to-install builds are on the [Releases page](https://github.com/anggiedwarsa/pawpal/releases/latest):
+
+- **macOS** (Apple silicon and Intel): `PawPal-<version>-macOS.dmg`. Drag PawPal into Applications. The app isn't notarized yet, so the first time right-click it → **Open**.
+- **Windows** (10/11, 64-bit): `PawPal-<version>-Windows-Setup.exe`. Installs for your user, no admin needed.
+- **Linux**: `pawpal_<version>_amd64.deb` (`sudo apt install ./pawpal_<version>_amd64.deb`), or the `.tar.gz` for other distributions.
+
+Releases are built by GitHub Actions whenever a `v*` tag is pushed (`.github/workflows/release.yml`).
+
+## Build from source
 
 You need a recent stable [Rust](https://rustup.rs).
 
-**macOS**: builds `PawPal.app` with its icon. `--install` copies it to `/Applications`.
+**macOS**: builds `PawPal.app` with its icon. `--install` copies it to `/Applications`; `--universal` builds for both Apple silicon and Intel.
 
 ```sh
 ./build.sh --install

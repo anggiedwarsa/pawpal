@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PawPal
+Comment=A realistic desktop pet that lives on your taskbar
+Exec=pawpal
+Icon=pawpal
+Terminal=false
+Categories=Amusement;Game;
+StartupNotify=false
