@@ -41,6 +41,8 @@ struct Prefs {
     asked_accessibility: Option<String>,
     /// A pet comes out 10, 5 and 1 minute before calendar events.
     calendar_heads_ups: bool,
+    /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
+    terminal_cell: Option<(f64, f64)>,
 }
 
 impl Default for Prefs {
@@ -54,6 +56,7 @@ impl Default for Prefs {
             flipped: BTreeSet::new(),
             asked_accessibility: None,
             calendar_heads_ups: true,
+            terminal_cell: None,
         }
     }
 }
@@ -120,6 +123,8 @@ pub fn asked_accessibility() -> Option<String> { prefs().asked_accessibility.clo
 pub fn set_asked_accessibility(v: String) { update(|p| p.asked_accessibility = Some(v)) }
 pub fn calendar_heads_ups() -> bool { prefs().calendar_heads_ups }
 pub fn set_calendar_heads_ups(v: bool) { update(|p| p.calendar_heads_ups = v) }
+pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
+pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 
 /// Carries settings over from the Swift build, which kept them in UserDefaults.
 #[cfg(all(target_os = "macos", not(test)))]

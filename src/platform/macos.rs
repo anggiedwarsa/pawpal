@@ -64,6 +64,9 @@ thread_local! {
     /// The app that was in front before the user grabbed a pet, so it can get focus back.
     static PREVIOUS_APP: Cell<i32> = const { Cell::new(0) };
     static DOCK_ESTIMATE: Cell<Option<(Instant, Option<f64>)>> = const { Cell::new(None) };
+    /// Ghostty doesn't report its caret, so it is followed from how the screen text changes.
+    static TERMINAL: std::cell::RefCell<super::TerminalTracker> =
+        std::cell::RefCell::new(super::TerminalTracker::with_cell(crate::data::settings::terminal_cell()));
 }
 
 fn scale() -> f64 { SCALE.with(Cell::get) }
@@ -223,7 +226,14 @@ fn caret() -> Option<CGRect> {
         let text = element.attr("AXValue").filter(|v| unsafe { CFGetTypeID(v.0) == CFStringGetTypeID() });
         if let Some(text) = text {
             let text = unsafe { CFString::wrap_under_get_rule(text.0 as CFStringRef) }.to_string();
-            if let Some(r) = super::terminal_caret(&text, Rect::new(x, y, w, h)) { return Some(CGRect { x: r.x, y: r.y, w: r.w, h: r.h }) }
+            let guess = TERMINAL.with(|t| {
+                let mut t = t.borrow_mut();
+                let learned = t.cell();
+                let guess = t.update(&text, Rect::new(x, y, w, h));
+                if t.cell() != learned { crate::data::settings::set_terminal_cell(t.cell()) }
+                guess
+            });
+            if let Some(r) = guess { return Some(CGRect { x: r.x, y: r.y, w: r.w, h: r.h }) }
         }
     }
     // A small text field is fine to avoid whole; a big text view isn't a useful spot.
@@ -242,7 +252,9 @@ pub fn describe_typing() -> String {
     let Some(el) = focused_element() else { return "accessibility: allowed, no focused element".into() };
     let role = el.attr("AXRole").map(|r| unsafe { CFString::wrap_under_get_rule(r.0 as CFStringRef) }.to_string()).unwrap_or("?".into());
     let range = el.attr("AXSelectedTextRange").is_some();
-    format!("accessibility: allowed, role={role}, selectedRange={range}, caret={:?}", caret())
+    let caret = caret();
+    let cell = TERMINAL.with(|t| t.borrow().cell());
+    format!("accessibility: allowed, role={role}, selectedRange={range}, caret={caret:?}, terminal cell={cell:?}")
 }
 
 /// The frontmost app's front window; its bounds are readable without any permission.
@@ -337,10 +349,31 @@ pub fn set_frame(window: &Window, r: Rect) -> bool {
     let Some(view) = ns_view(window) else { return false };
     let view: &NSView = unsafe { view.cast::<NSView>().as_ref() };
     let Some(win) = view.window() else { return false };
+    pin_contents_bottom_left(view);
     let k = scale();
     let frame = NSRect::new(NSPoint::new(r.x / k, primary_height() - r.max_y() / k), NSSize::new(r.w / k, r.h / k));
     win.setFrame_display(frame, false);
     true
+}
+
+/// Until the next frame is drawn at the new size, macOS shows the old one stretched to fit the window,
+/// which squashes the pets for a moment. Everything is drawn up from the window's bottom edge, so
+/// keeping the old frame unscaled at the bottom-left shows it exactly where it belongs. The GL picture
+/// lives in a sublayer, which gets the same treatment.
+fn pin_contents_bottom_left(view: &NSView) {
+    view.setLayerContentsPlacement(objc2_app_kit::NSViewLayerContentsPlacement::BottomLeft);
+    let gravity = NSString::from_str("bottomLeft");
+    unsafe {
+        let layer: *mut objc2::runtime::AnyObject = objc2::msg_send![view, layer];
+        let Some(layer) = layer.as_ref() else { return };
+        let _: () = objc2::msg_send![layer, setContentsGravity: &*gravity];
+        let sublayers: *mut objc2_foundation::NSArray<objc2::runtime::AnyObject> = objc2::msg_send![layer, sublayers];
+        if let Some(sublayers) = sublayers.as_ref() {
+            for sub in sublayers.iter() {
+                let _: () = objc2::msg_send![&*sub, setContentsGravity: &*gravity];
+            }
+        }
+    }
 }
 
 fn ns_view(window: &Window) -> Option<std::ptr::NonNull<c_void>> {

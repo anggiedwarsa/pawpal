@@ -40,6 +40,8 @@ struct PetDraw {
     rect: Rect,
     flip: bool,
     sink: f64,
+    /// Rotation about the frame's centre (radians, counterclockwise on screen).
+    tilt: f64,
     shadow: Option<(Rect, f32)>,
 }
 
@@ -159,6 +161,12 @@ impl Stage {
             if d.sink > 0.0 {
                 self.canvas.scissor(d.rect.x as f32, d.rect.y as f32, d.rect.w as f32, d.rect.h as f32);
             }
+            if d.tilt != 0.0 {
+                let (cx, cy) = ((d.rect.x + d.rect.w / 2.0) as f32, (d.rect.y + d.rect.h / 2.0) as f32);
+                self.canvas.translate(cx, cy);
+                self.canvas.rotate(d.tilt as f32);
+                self.canvas.translate(-cx, -cy);
+            }
             let img = Img { w: d.rect.w, h: d.rect.h, ..d.frame };
             self.draw_image(img, d.rect.x, d.rect.y - d.sink * d.rect.h, 1.0, d.flip);
             self.canvas.restore();
@@ -198,6 +206,8 @@ impl Stage {
             rect: Rect::new(p.x - w / 2.0, ground + p.y - 1.0, w, h),
             flip: ((p.facing > 0.0) != clip.faces_right) != skin.flip(),
             sink: p.sink,
+            // Clockwise on screen tips the nose of a pet facing right downwards.
+            tilt: if name == "jump" && !clip.pixel_art { -fall_tilt(p, s) * p.facing.signum() } else { 0.0 },
             shadow,
         })
     }
@@ -309,7 +319,7 @@ fn scene_key(pets: &[PetDraw], world: &World) -> String {
     let mut k = String::new();
     for d in pets {
         let r = d.rect;
-        let _ = write!(k, "{:?} {:.1} {:.1} {:.1} {:.1} {} {:.3} {:?}|", d.frame.id, r.x, r.y, r.w, r.h, d.flip, d.sink, d.shadow.map(|(s, a)| (s.x.round(), s.w.round(), (a * 100.0).round())));
+        let _ = write!(k, "{:?} {:.1} {:.1} {:.1} {:.1} {} {:.3} {:.2} {:?}|", d.frame.id, r.x, r.y, r.w, r.h, d.flip, d.sink, d.tilt, d.shadow.map(|(s, a)| (s.x.round(), s.w.round(), (a * 100.0).round())));
     }
     for p in &world.pets {
         if let (Some(text), true) = (&p.bubble, p.sink < 0.5) { let _ = write!(k, "{text} {:.1} {:.1}|", p.x, world.bubble_y(p)); }
@@ -327,6 +337,25 @@ fn jump_progress(p: &Pet, s: f64) -> Option<f64> {
     }
     (!p.on_ground()).then(|| clamp(0.5 - p.vy / (760.0 * s), 0.0, 0.999))
 }
+
+/// How far (radians) a jump clip tips nose-down while the pet goes down. A jump clip is usually a leap
+/// upwards, and even its last frames still look like taking off when the pet is really dropping to a
+/// lower level. Pixel art keeps its own frames: rotating it breaks its hard edges.
+fn fall_tilt(p: &Pet, s: f64) -> f64 {
+    let down = if p.leaping {
+        if p.leap_to.y >= p.leap_from.y - 1.0 { return 0.0 }
+        // Tips over early, then levels out again for the last quarter so it lands on its feet.
+        clamp((p.leap_k * 2.5).min((1.0 - p.leap_k) * 4.0), 0.0, 1.0)
+    } else if !p.on_ground() && p.vy < 0.0 {
+        clamp(-p.vy / (300.0 * s), 0.0, 1.0)
+    } else {
+        return 0.0;
+    };
+    down * MAX_FALL_TILT
+}
+
+/// About 45°: from a leap's head-up pose to head-down.
+const MAX_FALL_TILT: f64 = 0.8;
 
 /// Picks the clip that fits what the pet is doing; walk and run clips play faster or slower to match its speed.
 fn choose<'a>(p: &Pet, skin: &'a Skin, s: f64) -> Option<(&'a str, &'a Clip, f64)> {

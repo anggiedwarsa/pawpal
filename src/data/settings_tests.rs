@@ -29,6 +29,8 @@ fn settings_save_to_a_test_file() {
     assert!(path().exists());
     let saved: Prefs = serde_json::from_str(&std::fs::read_to_string(path()).unwrap()).unwrap();
     assert_eq!(saved.asked_accessibility.as_deref(), Some("build-1"));
+    set_terminal_cell(Some((8.5, 19.0)));
+    assert_eq!(terminal_cell(), Some((8.5, 19.0)));
 }
 
 #[test]
