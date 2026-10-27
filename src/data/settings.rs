@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::Species;
 use crate::engine::breaks::DEFAULT_BREAK_EVERY;
+use crate::engine::rhythm::DEFAULT_BEDTIME;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -44,6 +45,8 @@ struct Prefs {
     calendar_heads_ups: bool,
     /// Minutes at the computer before a pet suggests a break; 0 is off.
     break_every: u32,
+    /// When pets go to bed for the night (local hour); none means no daily rhythm.
+    bedtime: Option<u32>,
     /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
     terminal_cell: Option<(f64, f64)>,
 }
@@ -60,6 +63,7 @@ impl Default for Prefs {
             asked_accessibility: None,
             calendar_heads_ups: true,
             break_every: DEFAULT_BREAK_EVERY,
+            bedtime: Some(DEFAULT_BEDTIME),
             terminal_cell: None,
         }
     }
@@ -129,6 +133,8 @@ pub fn calendar_heads_ups() -> bool { prefs().calendar_heads_ups }
 pub fn set_calendar_heads_ups(v: bool) { update(|p| p.calendar_heads_ups = v) }
 pub fn break_every() -> u32 { prefs().break_every }
 pub fn set_break_every(v: u32) { update(|p| p.break_every = v) }
+pub fn bedtime() -> Option<u32> { prefs().bedtime }
+pub fn set_bedtime(v: Option<u32>) { update(|p| p.bedtime = v) }
 pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
 pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 

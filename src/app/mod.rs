@@ -197,6 +197,7 @@ impl ApplicationHandler for App {
         }
         self.spare = create_gfx(el).ok().filter(|g| platform::set_alpha(&g.window, 0.0));
         self.layout();
+        (self.world.hour, self.world.bedtime) = (platform::local_hour(), settings::bedtime());
         self.load_pets();
         self.build_tray();
         self.next_frame = Instant::now();
@@ -364,7 +365,10 @@ impl App {
         let every = |n: u64| now / n != before / n;
         if every(60) { self.layout() }
         if every(900) { self.save_pets() }
-        if every(30) { self.build_tray() }
+        if every(30) {
+            self.build_tray();
+            (self.world.hour, self.world.bedtime) = (platform::local_hour(), settings::bedtime());
+        }
         self.poll_import();
         self.handle_menu_events(el);
         if every(10) { self.watch_typing(every(30)) }
@@ -649,6 +653,10 @@ impl App {
             Command::ToggleAuto => settings::set_auto(!settings::auto()),
             Command::ToggleCalendar => settings::set_calendar_heads_ups(!settings::calendar_heads_ups()),
             Command::BreakEvery(n) => settings::set_break_every(n),
+            Command::Bedtime(h) => {
+                settings::set_bedtime(h);
+                self.world.bedtime = h;
+            }
             Command::ToggleLogin => {
                 if let Some(l) = login_item() {
                     let on = l.is_enabled().unwrap_or(false);

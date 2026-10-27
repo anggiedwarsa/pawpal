@@ -1,5 +1,6 @@
 //! How pets decide what to do and how each activity plays out.
 
+use super::rhythm::{weight, DayPart};
 use super::world::{on_dock, World, VISIT_DURATION, VISIT_FOLLOW_DISTANCE};
 use crate::data::settings;
 use crate::domain::Activity::{self, *};
@@ -126,15 +127,22 @@ impl World {
 
     fn finish(&mut self, p: &mut Pet) {
         if p.activity == Sleep {
+            // At night it just sleeps on until morning.
+            if self.sleeps_through(p) {
+                p.timer = sleep_duration(p);
+                return;
+            }
+            let morning = self.day() == DayPart::Morning;
             self.start(p, if p.supports(Stretch) { Stretch } else { Idle }, false);
-            p.say(p.species.line("*yaaawn*", "*big yawn*"), 2.6);
+            let yawn = p.species.line("*yaaawn*", "*big yawn*");
+            if morning { p.say(format!("{yawn} Good morning! ☀️"), 3.0) } else { p.say(yawn, 2.6) }
             return;
         }
         self.choose_next(p);
     }
 
     /// Free will: pick the next activity from the pet's needs, what's around, and the clips it has.
-    fn choose_next(&mut self, p: &mut Pet) {
+    pub(super) fn choose_next(&mut self, p: &mut Pet) {
         // Nothing gets in front of a full-screen video: back to the corner.
         if self.fullscreen { return self.start(p, Hide, false) }
         if !settings::auto() {
@@ -148,6 +156,10 @@ impl World {
         if self.nearest_bowl(p).is_some() && p.hunger > 10.0 && can(Eat) { return self.start(p, Eat, false) }
         if self.nearest_ball(p).is_some() && can(PlayBall) && chance(0.6) { return self.start(p, PlayBall, false) }
         if self.nearest_butterfly(p).is_some() && can(ChaseButterfly) && chance(0.7) { return self.start(p, ChaseButterfly, false) }
+        if self.day() == DayPart::Night && can(Sleep) {
+            if p.activity != Stretch { p.say("*yawn* Bedtime… 🌙", 2.6) }
+            return self.start(p, Sleep, false);
+        }
         if p.hunger > 70.0 && chance(0.35) {
             p.say(pick(p.species.hungry()), 3.0);
             let next = if can(Meow) { Meow } else { Idle };
@@ -158,10 +170,12 @@ impl World {
             (Idle, 3.0), (Walk, 5.0), (Sniff, 1.5), (Run, if p.energy > 50.0 { 1.2 } else { 0.2 }), (Sit, 3.0), (Lounge, 2.0),
             (Groom, 2.0), (Knead, if p.happiness > 50.0 { 1.0 } else { 0.3 }), (Jump, 1.0), (Pounce, 1.0),
             (Dance, if p.happiness > 60.0 { 0.7 } else { 0.2 }), (Wave, 0.5), (Meow, 1.0), (Peekaboo, 0.5),
-            (Sleep, if p.energy < 40.0 { 3.0 } else { 0.3 }), (Hop, 1.5),
+            (Sleep, if p.energy < 40.0 { 3.0 } else { 0.3 }), (Hop, 1.5), (Stretch, 0.4),
         ];
         if self.pets.len() > 1 { options.push((PlayFriend, 1.2)) }
         options.retain(|o| can(o.0));
+        let day = self.day();
+        for o in &mut options { o.1 *= weight(day, o.0) }
         let mut r = fastrand::f64() * options.iter().map(|o| o.1).sum::<f64>().max(0.001);
         for (a, w) in options {
             r -= w;
@@ -169,6 +183,9 @@ impl World {
         }
         self.start(p, Idle, false);
     }
+
+    /// Whether a nap that's over carries on: at night, unless the pet was only sent for a nap.
+    fn sleeps_through(&self, p: &Pet) -> bool { !p.commanded && settings::auto() && self.day() == DayPart::Night }
 
     /// Moves toward tx; returns true once arrived (or straight away for pets that can't travel).
     pub(super) fn move_to(&self, p: &mut Pet, tx: f64, speed: f64) -> bool {
@@ -281,7 +298,7 @@ impl World {
                     let at = self.head_point(p) + pt(8.0 * s * p.facing, 8.0 * s);
                     self.emit_with("z", at, 12.0, pt(p.facing * 8.0, 18.0), 2.4);
                 }
-                if p.energy >= 100.0 && !p.commanded { p.timer = p.timer.min(0.0) }
+                if p.energy >= 100.0 && !p.commanded && !self.sleeps_through(p) { p.timer = p.timer.min(0.0) }
             }
             Jump => {
                 if p.age > 0.15 && p.on_ground() { p.timer = 0.0 }

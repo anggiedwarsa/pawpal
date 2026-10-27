@@ -79,3 +79,9 @@ fn terminal_tracker_starts_from_a_cell_size_learned_before() {
     assert_eq!((c.x, c.y, c.w, c.h), (40.0, 0.0, 10.0, 10.0));
     assert_eq!(t.cell(), Some((10.0, 10.0)));
 }
+
+#[test]
+fn the_local_clock_reads_a_time_of_day() {
+    let h = local_hour();
+    assert!((0.0..24.0).contains(&h), "{h}");
+}

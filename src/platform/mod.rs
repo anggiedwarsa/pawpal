@@ -134,6 +134,37 @@ fn last_change(old: &[&str], new: &[&str]) -> Option<(usize, usize)> {
     Some((row, col + 1))
 }
 
+/// The local time of day in hours (0–24), from the system's time zone.
+#[cfg(unix)]
+pub fn local_hour() -> f64 {
+    // `struct tm` starts with these fields, in this order, on macOS and glibc alike.
+    #[repr(C)]
+    struct Tm { sec: i32, min: i32, hour: i32, rest: [i32; 6], gmtoff: std::ffi::c_long, zone: *const std::ffi::c_char }
+    extern "C" {
+        fn time(t: *mut i64) -> i64;
+        fn localtime_r(t: *const i64, tm: *mut Tm) -> *mut Tm;
+    }
+    let mut tm = Tm { sec: 0, min: 0, hour: 12, rest: [0; 6], gmtoff: 0, zone: std::ptr::null() };
+    // SAFETY: both only write to the locals passed in.
+    unsafe {
+        let t = time(std::ptr::null_mut());
+        if localtime_r(&t, &mut tm).is_null() { return 12.0 }
+    }
+    tm.hour as f64 + tm.min as f64 / 60.0 + tm.sec as f64 / 3600.0
+}
+
+/// The local time of day in hours (0–24), from the system's time zone.
+#[cfg(windows)]
+pub fn local_hour() -> f64 {
+    // SAFETY: GetLocalTime only fills in the struct passed to it.
+    let t = unsafe {
+        let mut t = std::mem::zeroed();
+        windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut t);
+        t
+    };
+    t.wHour as f64 + t.wMinute as f64 / 60.0 + t.wSecond as f64 / 3600.0
+}
+
 /// Opens a folder in the system file browser.
 pub fn open_folder(path: &std::path::Path) {
     let opener = if cfg!(target_os = "macos") { "open" } else if cfg!(windows) { "explorer" } else { "xdg-open" };

@@ -11,6 +11,7 @@ use crate::data::skin::ACTIONS;
 use crate::domain::Activity::{self, *};
 use crate::domain::Pet;
 use crate::engine::breaks::BREAK_EVERY;
+use crate::engine::rhythm::BEDTIMES;
 use crate::platform;
 
 /// What a menu item does when chosen.
@@ -36,6 +37,7 @@ pub enum Command {
     ToggleAuto,
     ToggleCalendar,
     BreakEvery(u32),
+    Bedtime(Option<u32>),
     ToggleLogin,
     Quit,
 }
@@ -51,6 +53,16 @@ fn item(title: impl Into<String>, cmd: Command) -> Node { Node::Item { title: ti
 fn check(title: impl Into<String>, on: bool, cmd: Command) -> Node { Node::Item { title: title.into(), cmd: Some(cmd), checked: Some(on) } }
 fn note(title: impl Into<String>) -> Node { Node::Item { title: title.into(), cmd: None, checked: None } }
 fn sub(title: impl Into<String>, children: Vec<Node>) -> Node { Node::Sub { title: title.into(), children } }
+
+/// An hour on the clock, as a menu shows it.
+fn clock(h: u32) -> String {
+    match h {
+        0 => "Midnight".into(),
+        12 => "Noon".into(),
+        h if h > 12 => format!("{} PM", h - 12),
+        h => format!("{h} AM"),
+    }
+}
 
 /// Activities, with ones the pet has no clip for greyed out and saying which clip to import.
 fn activity_items(pets: &[&Pet]) -> Vec<Node> {
@@ -163,6 +175,10 @@ impl App {
         let mut breaks = vec![check("Off", every == 0, Command::BreakEvery(0))];
         breaks.extend(BREAK_EVERY.into_iter().map(|n| check(format!("Every {n} Minutes"), every == n, Command::BreakEvery(n))));
         m.push(sub("🧘 Break Reminders", breaks));
+        let bed = settings::bedtime();
+        let mut beds = vec![check("Off (no daily rhythm)", bed.is_none(), Command::Bedtime(None))];
+        beds.extend(BEDTIMES.into_iter().map(|h| check(clock(h), bed == Some(h), Command::Bedtime(Some(h)))));
+        m.push(sub("🌙 Bedtime", beds));
         if let Some(on) = self.login_enabled {
             m.push(check("Launch at Login", on, Command::ToggleLogin));
         }
