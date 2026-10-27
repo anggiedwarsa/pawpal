@@ -10,6 +10,7 @@ pub mod greet;
 mod interaction;
 mod props_physics;
 pub mod rhythm;
+pub mod seasons;
 pub mod tricks;
 mod world;
 

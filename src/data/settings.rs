@@ -54,6 +54,8 @@ struct Prefs {
     focus_in_calls: bool,
     /// Pets like to dance while sound is playing.
     dance_to_music: bool,
+    /// Snow, leaves and such drift down now and then.
+    seasonal: bool,
     /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
     terminal_cell: Option<(f64, f64)>,
 }
@@ -74,6 +76,7 @@ impl Default for Prefs {
             alarms: Vec::new(),
             focus_in_calls: true,
             dance_to_music: true,
+            seasonal: true,
             terminal_cell: None,
         }
     }
@@ -151,6 +154,8 @@ pub fn focus_in_calls() -> bool { prefs().focus_in_calls }
 pub fn set_focus_in_calls(v: bool) { update(|p| p.focus_in_calls = v) }
 pub fn dance_to_music() -> bool { prefs().dance_to_music }
 pub fn set_dance_to_music(v: bool) { update(|p| p.dance_to_music = v) }
+pub fn seasonal() -> bool { prefs().seasonal }
+pub fn set_seasonal(v: bool) { update(|p| p.seasonal = v) }
 pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
 pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 

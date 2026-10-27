@@ -88,7 +88,7 @@ fn the_local_clock_reads_a_time_of_day() {
 
 #[test]
 #[ignore = "prints what the audio devices report, for checking by hand"]
-fn audio_state() { eprintln!("AUDIO ax={} in_call={} playing={} battery={:?}", accessibility_trusted(), in_call(), audio_playing(), battery()) }
+fn audio_state() { eprintln!("AUDIO ax={} in_call={} playing={} battery={:?} date={:?}", accessibility_trusted(), in_call(), audio_playing(), battery(), local_date()) }
 
 #[test]
 fn meet_calls_are_told_from_meets_home_page() {
@@ -98,4 +98,10 @@ fn meet_calls_are_told_from_meets_home_page() {
     assert!(!is_meeting_title("Meet - Google Chrome"));
     assert!(!is_meeting_title("Meet - abc-defg"));
     assert!(!is_meeting_title("Meeting notes - abc-defg-hij"));
+}
+
+#[test]
+fn the_local_date_is_a_real_date() {
+    let (month, day) = local_date();
+    assert!((1..=12).contains(&month) && (1..=31).contains(&day), "{month}/{day}");
 }

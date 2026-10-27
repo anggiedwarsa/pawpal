@@ -135,8 +135,17 @@ fn last_change(old: &[&str], new: &[&str]) -> Option<(usize, usize)> {
 }
 
 /// The local time of day in hours (0–24), from the system's time zone.
+pub fn local_hour() -> f64 { local_time().2 }
+
+/// Today's local month (1–12) and day of the month.
+pub fn local_date() -> (u32, u32) {
+    let (month, day, _) = local_time();
+    (month, day)
+}
+
+/// The local month (1–12), day of the month and hour (0–24), from the system's time zone.
 #[cfg(unix)]
-pub fn local_hour() -> f64 {
+fn local_time() -> (u32, u32, f64) {
     // `struct tm` starts with these fields, in this order, on macOS and glibc alike.
     #[repr(C)]
     struct Tm { sec: i32, min: i32, hour: i32, rest: [i32; 6], gmtoff: std::ffi::c_long, zone: *const std::ffi::c_char }
@@ -148,21 +157,23 @@ pub fn local_hour() -> f64 {
     // SAFETY: both only write to the locals passed in.
     unsafe {
         let t = time(std::ptr::null_mut());
-        if localtime_r(&t, &mut tm).is_null() { return 12.0 }
+        if localtime_r(&t, &mut tm).is_null() { return (6, 1, 12.0) }
     }
-    tm.hour as f64 + tm.min as f64 / 60.0 + tm.sec as f64 / 3600.0
+    // After the hour come the day of the month, then the month counted from 0.
+    let (day, month) = (tm.rest[0] as u32, tm.rest[1] as u32 + 1);
+    (month, day, tm.hour as f64 + tm.min as f64 / 60.0 + tm.sec as f64 / 3600.0)
 }
 
-/// The local time of day in hours (0–24), from the system's time zone.
+/// The local month (1–12), day of the month and hour (0–24), from the system's time zone.
 #[cfg(windows)]
-pub fn local_hour() -> f64 {
+fn local_time() -> (u32, u32, f64) {
     // SAFETY: GetLocalTime only fills in the struct passed to it.
     let t = unsafe {
         let mut t = std::mem::zeroed();
         windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut t);
         t
     };
-    t.wHour as f64 + t.wMinute as f64 / 60.0 + t.wSecond as f64 / 3600.0
+    (t.wMonth as u32, t.wDay as u32, t.wHour as f64 + t.wMinute as f64 / 60.0 + t.wSecond as f64 / 3600.0)
 }
 
 /// Whether a window title is a Google Meet call ("Meet - abc-defg-hij", maybe followed by the browser's name),

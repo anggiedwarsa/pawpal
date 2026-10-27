@@ -3,6 +3,7 @@
 
 use crate::data::settings;
 use crate::domain::Activity::{self, *};
+use super::seasons::{Flurry, Touch};
 use crate::domain::{same_level, Ball, Bowl, Butterfly, Particle, Pet};
 use crate::support::*;
 
@@ -45,6 +46,10 @@ pub struct World {
     pub focusing: bool,
     /// Music (or any sound) is playing: pets like to dance.
     pub music: bool,
+    /// What's in the air this time of year, and the month, fed in by the app; see `seasons`.
+    pub touch: Option<Touch>,
+    pub month: u32,
+    pub flurry: Flurry,
 }
 
 /// Seconds the cursor must stay still before a pet comes to visit it.
@@ -92,6 +97,9 @@ impl World {
             bedtime: None,
             focusing: false,
             music: false,
+            touch: None,
+            month: 1,
+            flurry: Flurry::default(),
             below: 0.0,
             dock_start: f64::NEG_INFINITY,
             dock_end: f64::INFINITY,
@@ -141,6 +149,7 @@ impl World {
         for i in 0..self.pets.len() {
             self.with_pet(i, |w, p| w.update(p, dt));
         }
+        self.seasonal_step(dt);
         self.update_props(dt);
     }
 

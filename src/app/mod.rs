@@ -39,6 +39,7 @@ use crate::engine::breaks::{nudge_text, BreakTimer};
 use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
 use crate::engine::focus::CallWatch;
 use crate::engine::greet::Presence;
+use crate::engine::seasons::touch;
 use crate::engine::{World, TYPING_PAUSE};
 use crate::platform;
 use crate::render::Stage;
@@ -218,7 +219,7 @@ impl ApplicationHandler for App {
         }
         self.spare = create_gfx(el).ok().filter(|g| platform::set_alpha(&g.window, 0.0));
         self.layout();
-        (self.world.hour, self.world.bedtime) = (platform::local_hour(), settings::bedtime());
+        self.read_clock();
         self.load_pets();
         self.build_tray();
         self.next_frame = Instant::now();
@@ -388,7 +389,7 @@ impl App {
         if every(900) { self.save_pets() }
         if every(30) {
             self.build_tray();
-            (self.world.hour, self.world.bedtime) = (platform::local_hour(), settings::bedtime());
+            self.read_clock();
             if let Some(away) = self.presence.back(now_secs(), self.world.mouse_still) { self.world.welcome_back(away) }
             if self.focus_until.is_some_and(|t| now_secs() >= t) { self.end_focus(true) }
         }
@@ -540,6 +541,15 @@ impl App {
         if self.world.pets.is_empty() || self.world.pets.iter().any(|p| p.activity == Remind) { return }
         let Some((percent, charging)) = platform::battery() else { return };
         if let Some(mark) = self.battery.due(percent, charging) { self.world.remind(&battery_text(mark)) }
+    }
+
+    /// The time of day and date, for the daily rhythm and seasonal touches.
+    fn read_clock(&mut self) {
+        let w = &mut self.world;
+        (w.hour, w.bedtime) = (platform::local_hour(), settings::bedtime());
+        let (month, day) = platform::local_date();
+        w.month = month;
+        w.touch = if settings::seasonal() { touch(month, day, w.hour) } else { None };
     }
 
     /// Every couple of seconds: whether music is playing. A call's sound doesn't count, and music counts as
@@ -744,6 +754,10 @@ impl App {
             }
             Command::ToggleCallFocus => settings::set_focus_in_calls(!settings::focus_in_calls()),
             Command::ToggleMusic => settings::set_dance_to_music(!settings::dance_to_music()),
+            Command::ToggleSeasonal => {
+                settings::set_seasonal(!settings::seasonal());
+                self.read_clock();
+            }
             Command::EndFocus => self.end_focus(false),
             Command::CancelAlarm(id) => settings::set_alarms(settings::alarms().into_iter().filter(|a| a.id != id).collect()),
             Command::Rename(id) => self.rename(id),
