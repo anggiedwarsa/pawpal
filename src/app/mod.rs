@@ -36,6 +36,7 @@ use crate::domain::{Pet, Species};
 use crate::engine::alarms::{alarm_text, clock_label, parse_when, take_due, Alarm};
 use crate::engine::breaks::{nudge_text, BreakTimer};
 use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
+use crate::engine::focus::CallWatch;
 use crate::engine::greet::Presence;
 use crate::engine::{World, TYPING_PAUSE};
 use crate::platform;
@@ -139,6 +140,9 @@ pub struct App {
     presence: Presence,
     /// When focus mode ends (seconds since the epoch).
     focus_until: Option<f64>,
+    /// Focus mode came on by itself for a call, and goes off when it ends.
+    call_focus: bool,
+    calls: CallWatch,
     /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
     compact: bool,
     low_since: Option<Instant>,
@@ -182,6 +186,8 @@ pub fn run() {
         breaks: BreakTimer::default(),
         presence: Presence::default(),
         focus_until: None,
+        call_focus: false,
+        calls: CallWatch::default(),
         logged_typing: false,
         import_rx: None,
         login_enabled: login_item().and_then(|l| l.is_enabled().ok()),
@@ -381,6 +387,7 @@ impl App {
         self.poll_import();
         self.handle_menu_events(el);
         if every(10) { self.watch_typing(every(30)) }
+        if every(90) { self.watch_calls() }
         if every(150) {
             self.check_calendar();
             self.check_alarms();
@@ -494,11 +501,28 @@ impl App {
 
     /// Focus time is up (`finished`) or was ended from the menu.
     fn end_focus(&mut self, finished: bool) {
-        self.focus_until = None;
+        (self.focus_until, self.call_focus) = (None, false);
         self.world.end_focus(finished);
         // The well-done is the break, so the break count starts again.
         if finished { self.breaks.reset() }
         self.build_tray();
+    }
+
+    /// Every few seconds: pets go to bed when a call starts (unless already focusing) and wake when it ends.
+    fn watch_calls(&mut self) {
+        let seen = settings::focus_in_calls() && platform::in_call();
+        match self.calls.update(now_secs(), seen) {
+            Some(true) if !self.world.focusing => {
+                self.call_focus = true;
+                self.world.start_focus("Shh… you're in a call 🤫");
+                self.build_tray();
+            }
+            Some(false) if self.call_focus => {
+                self.end_focus(false);
+                self.world.tell("Call's over! 🐾");
+            }
+            _ => {}
+        }
     }
 
     /// Every few seconds: sends a pet out with a reminder the user set, once it's due (one at a time).
@@ -527,10 +551,7 @@ impl App {
         let mut alarms = settings::alarms();
         alarms.push(Alarm { id: (now * 1000.0) as u64, text, at });
         settings::set_alarms(alarms);
-        let mid = self.world.width / 2.0;
-        if let Some(p) = self.world.pets.iter_mut().filter(|p| p.activity != Dragged).min_by(|a, b| (a.x - mid).abs().total_cmp(&(b.x - mid).abs())) {
-            p.say(format!("Okay! I'll remind you at {label} ⏰"), 3.0);
-        }
+        self.world.tell(&format!("Okay! I'll remind you at {label} ⏰"));
         self.build_tray();
     }
 
@@ -692,9 +713,11 @@ impl App {
             Command::RemindMe => self.remind_me(),
             Command::Focus(n) => {
                 self.focus_until = Some(now_secs() + n as f64 * 60.0);
-                self.world.start_focus(n);
+                self.call_focus = false;
+                self.world.start_focus(&format!("Shh… focus time 🎯 See you in {n} min"));
                 self.build_tray();
             }
+            Command::ToggleCallFocus => settings::set_focus_in_calls(!settings::focus_in_calls()),
             Command::EndFocus => self.end_focus(false),
             Command::CancelAlarm(id) => settings::set_alarms(settings::alarms().into_iter().filter(|a| a.id != id).collect()),
             Command::Rename(id) => self.rename(id),

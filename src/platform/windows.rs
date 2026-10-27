@@ -185,3 +185,97 @@ pub fn lift_subject(_img: &RgbaImage) -> Option<Option<RgbaImage>> { None }
 /// No calendar to read here yet (an iCal feed could be added); no heads-ups.
 pub fn has_calendar() -> bool { false }
 pub fn upcoming_events(_within: f64) -> Vec<crate::domain::CalendarEvent> { Vec::new() }
+
+/// Whether some app is using the microphone or webcam right now, from the privacy settings' "in use" records:
+/// each app that used the device has a key whose LastUsedTimeStop is 0 while it still has it open.
+fn device_in_use(device: &str) -> bool {
+    use windows_sys::Win32::System::Registry::{RegCloseKey, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_READ, RRF_RT_QWORD};
+    fn wide(s: &str) -> Vec<u16> { s.encode_utf16().chain(Some(0)).collect() }
+    // Looks at the key's own record, then its subkeys' (desktop apps sit one level down, under NonPackaged).
+    fn any_open(key: HKEY, depth: u32) -> bool {
+        let (mut stop, mut size) = (u64::MAX, 8u32);
+        let name = wide("LastUsedTimeStop");
+        let got = unsafe { RegGetValueW(key, std::ptr::null(), name.as_ptr(), RRF_RT_QWORD, std::ptr::null_mut(), &mut stop as *mut u64 as *mut c_void, &mut size) };
+        if got == 0 && stop == 0 { return true }
+        if depth == 0 { return false }
+        for i in 0.. {
+            let mut buf = [0u16; 512];
+            let mut len = buf.len() as u32;
+            let r = unsafe { RegEnumKeyExW(key, i, buf.as_mut_ptr(), &mut len, std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()) };
+            if r != 0 { break }
+            let mut sub: HKEY = std::ptr::null_mut();
+            if unsafe { RegOpenKeyExW(key, buf.as_ptr(), 0, KEY_READ, &mut sub) } != 0 { continue }
+            let open = any_open(sub, depth - 1);
+            unsafe { RegCloseKey(sub) };
+            if open { return true }
+        }
+        false
+    }
+    let path = wide(&format!("Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\{device}"));
+    let mut key: HKEY = std::ptr::null_mut();
+    if unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, path.as_ptr(), 0, KEY_READ, &mut key) } != 0 { return false }
+    let open = any_open(key, 2);
+    unsafe { RegCloseKey(key) };
+    open
+}
+
+/// Some top-level window's title is a Google Meet call.
+fn meeting_window_open() -> bool {
+    use windows_sys::core::BOOL;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowTextW, IsWindowVisible};
+    unsafe extern "system" fn look(hwnd: HWND, found: LPARAM) -> BOOL {
+        if IsWindowVisible(hwnd) == 0 { return 1 }
+        let mut buf = [0u16; 256];
+        let n = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
+        if n > 0 && super::is_meeting_title(&String::from_utf16_lossy(&buf[..n as usize])) {
+            *(found as *mut bool) = true;
+            return 0;
+        }
+        1
+    }
+    let mut found = false;
+    // SAFETY: `look` only writes to `found`, which outlives the call.
+    unsafe { EnumWindows(Some(look), &mut found as *mut bool as LPARAM) };
+    found
+}
+
+/// The user is in a call: the mic or webcam is on, or a Meet call is open (Meet may leave the mic closed while muted).
+pub fn in_call() -> bool { device_in_use("microphone") || device_in_use("webcam") || meeting_window_open() }
+
+/// Some app is playing sound: the default speakers' peak level right now is above silence.
+pub fn audio_playing() -> bool {
+    use windows_sys::core::GUID;
+    use windows_sys::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED};
+    const MM_DEVICE_ENUMERATOR: GUID = GUID::from_u128(0xBCDE0395_E52F_467C_8E3D_C4579291692E);
+    const IMM_DEVICE_ENUMERATOR: GUID = GUID::from_u128(0xA95664D2_9614_4F35_A746_DE8DB63617E6);
+    const IAUDIO_METER_INFORMATION: GUID = GUID::from_u128(0xC02216F6_8C67_4B5B_9D00_D008E73E0064);
+    /// The `i`th method of a COM object's vtable.
+    unsafe fn method<F: Copy>(obj: *mut c_void, i: usize) -> F { std::mem::transmute_copy(&*(*(obj as *const *const usize)).add(i)) }
+    unsafe fn release(obj: *mut c_void) { method::<unsafe extern "system" fn(*mut c_void) -> u32>(obj, 2)(obj); }
+    // SAFETY: each call follows the interface's vtable layout (IUnknown's three methods first), and every
+    // object made here is released before returning.
+    unsafe {
+        // Already initialised on this thread (winit does), which is fine.
+        CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+        let mut enumerator: *mut c_void = std::ptr::null_mut();
+        if CoCreateInstance(&MM_DEVICE_ENUMERATOR, std::ptr::null_mut(), CLSCTX_ALL, &IMM_DEVICE_ENUMERATOR, &mut enumerator) < 0 { return false }
+        // IMMDeviceEnumerator::GetDefaultAudioEndpoint(eRender, eConsole)
+        let mut device: *mut c_void = std::ptr::null_mut();
+        let got = method::<unsafe extern "system" fn(*mut c_void, i32, i32, *mut *mut c_void) -> i32>(enumerator, 4)(enumerator, 0, 0, &mut device);
+        release(enumerator);
+        if got < 0 { return false }
+        // IMMDevice::Activate(IAudioMeterInformation)
+        let mut meter: *mut c_void = std::ptr::null_mut();
+        let got = method::<unsafe extern "system" fn(*mut c_void, *const GUID, u32, *mut c_void, *mut *mut c_void) -> i32>(device, 3)(
+            device, &IAUDIO_METER_INFORMATION, CLSCTX_ALL, std::ptr::null_mut(), &mut meter,
+        );
+        release(device);
+        if got < 0 { return false }
+        // IAudioMeterInformation::GetPeakValue
+        let mut peak = 0f32;
+        let got = method::<unsafe extern "system" fn(*mut c_void, *mut f32) -> i32>(meter, 3)(meter, &mut peak);
+        release(meter);
+        got >= 0 && peak > 0.001
+    }
+}

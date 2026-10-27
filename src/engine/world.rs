@@ -328,6 +328,14 @@ impl World {
             .min_by(|&a, &b| (self.butterflies[a].x - p.x).abs().total_cmp(&(self.butterflies[b].x - p.x).abs()))
     }
 
+    /// The pet nearest the middle of the screen says `text`.
+    pub fn tell(&mut self, text: &str) {
+        let mid = self.width / 2.0;
+        if let Some(p) = self.pets.iter_mut().filter(|p| p.activity != Dragged).min_by(|a, b| (a.x - mid).abs().total_cmp(&(b.x - mid).abs())) {
+            p.say(text, 3.0);
+        }
+    }
+
     pub fn emit(&mut self, text: &str, at: Point, size: f64) { self.emit_with(text, at, size, pt(0.0, 28.0), 1.4) }
 
     pub fn emit_with(&mut self, text: &str, at: Point, size: f64, v: Point, life: f64) {

@@ -149,3 +149,36 @@ pub fn lift_subject(_img: &RgbaImage) -> Option<Option<RgbaImage>> { None }
 /// No calendar to read here yet (an iCal feed could be added); no heads-ups.
 pub fn has_calendar() -> bool { false }
 pub fn upcoming_events(_within: f64) -> Vec<crate::domain::CalendarEvent> { Vec::new() }
+
+/// Whether a sound card has a capture ('c') or playback ('p') stream running, from /proc/asound. PulseAudio and
+/// PipeWire keep a device running while any app uses it and suspend it soon after.
+fn alsa_running(kind: char) -> bool {
+    let Ok(cards) = std::fs::read_dir("/proc/asound") else { return false };
+    cards.flatten().filter(|c| c.file_name().to_string_lossy().starts_with("card")).any(|card| {
+        let Ok(pcms) = std::fs::read_dir(card.path()) else { return false };
+        pcms.flatten().filter(|p| p.file_name().to_string_lossy().starts_with("pcm") && p.file_name().to_string_lossy().ends_with(kind)).any(|pcm| {
+            let Ok(subs) = std::fs::read_dir(pcm.path()) else { return false };
+            subs.flatten().any(|s| std::fs::read_to_string(s.path().join("status")).is_ok_and(|t| t.contains("state: RUNNING")))
+        })
+    })
+}
+
+/// Some window's title is a Google Meet call.
+fn meeting_window_open() -> bool {
+    with_x(|x| {
+        let (name, utf8) = (atom(x, "_NET_WM_NAME")?, atom(x, "UTF8_STRING")?);
+        let windows = x.conn.get_property(false, x.root, atom(x, "_NET_CLIENT_LIST")?, AtomEnum::WINDOW, 0, 1024).ok()?.reply().ok()?;
+        let open = windows.value32()?.any(|w| {
+            let title = x.conn.get_property(false, w, name, utf8, 0, 256).ok().and_then(|c| c.reply().ok());
+            title.is_some_and(|t| super::is_meeting_title(&String::from_utf8_lossy(&t.value)))
+        });
+        Some(open)
+    })
+    .unwrap_or(false)
+}
+
+/// The user is in a call: the mic is open, or a Meet call is open (Meet may leave the mic closed while muted).
+pub fn in_call() -> bool { alsa_running('c') || meeting_window_open() }
+
+/// Some app is playing sound.
+pub fn audio_playing() -> bool { alsa_running('p') }

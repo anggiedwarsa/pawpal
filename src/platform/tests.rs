@@ -85,3 +85,17 @@ fn the_local_clock_reads_a_time_of_day() {
     let h = local_hour();
     assert!((0.0..24.0).contains(&h), "{h}");
 }
+
+#[test]
+#[ignore = "prints what the audio devices report, for checking by hand"]
+fn audio_state() { eprintln!("AUDIO ax={} in_call={} playing={}", accessibility_trusted(), in_call(), audio_playing()) }
+
+#[test]
+fn meet_calls_are_told_from_meets_home_page() {
+    assert!(is_meeting_title("Meet - abc-defg-hij"));
+    assert!(is_meeting_title("Meet – abc-defg-hij - Google Chrome - Work"));
+    assert!(!is_meeting_title("Google Meet"));
+    assert!(!is_meeting_title("Meet - Google Chrome"));
+    assert!(!is_meeting_title("Meet - abc-defg"));
+    assert!(!is_meeting_title("Meeting notes - abc-defg-hij"));
+}

@@ -165,6 +165,16 @@ pub fn local_hour() -> f64 {
     t.wHour as f64 + t.wMinute as f64 / 60.0 + t.wSecond as f64 / 3600.0
 }
 
+/// Whether a window title is a Google Meet call ("Meet - abc-defg-hij", maybe followed by the browser's name),
+/// not Meet's home page.
+#[allow(dead_code)]
+pub fn is_meeting_title(title: &str) -> bool {
+    let Some(rest) = title.strip_prefix("Meet - ").or_else(|| title.strip_prefix("Meet – ")) else { return false };
+    let code: String = rest.chars().take_while(|c| c.is_ascii_lowercase() || *c == '-').collect();
+    let parts: Vec<usize> = code.split('-').map(str::len).collect();
+    parts == [3, 4, 3]
+}
+
 /// Opens a folder in the system file browser.
 pub fn open_folder(path: &std::path::Path) {
     let opener = if cfg!(target_os = "macos") { "open" } else if cfg!(windows) { "explorer" } else { "xdg-open" };

@@ -31,6 +31,7 @@ pub enum Command {
     RemindMe,
     Focus(u32),
     EndFocus,
+    ToggleCallFocus,
     CancelAlarm(u64),
     Rename(u64),
     Flip(String),
@@ -163,6 +164,7 @@ impl App {
                     let left = ((until - super::now_secs()) / 60.0).ceil().max(1.0);
                     m.push(item(format!("🎯 End Focus ({left} min left)"), Command::EndFocus));
                 }
+                None if self.call_focus => m.push(item("🎯 End Focus (in a call)", Command::EndFocus)),
                 None => m.push(sub("🎯 Focus", FOCUS_FOR.into_iter().map(|n| item(format!("{n} Minutes"), Command::Focus(n))).collect())),
             }
             let alarms = settings::alarms();
@@ -216,6 +218,7 @@ impl App {
         let mut breaks = vec![check("Off", every == 0, Command::BreakEvery(0))];
         breaks.extend(BREAK_EVERY.into_iter().map(|n| check(format!("Every {n} Minutes"), every == n, Command::BreakEvery(n))));
         m.push(sub("🧘 Break Reminders", breaks));
+        m.push(check("📞 Focus During Calls", settings::focus_in_calls(), Command::ToggleCallFocus));
         let bed = settings::bedtime();
         let mut beds = vec![check("Off (no daily rhythm)", bed.is_none(), Command::Bedtime(None))];
         beds.extend(BEDTIMES.into_iter().map(|h| check(clock(h), bed == Some(h), Command::Bedtime(Some(h)))));

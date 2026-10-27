@@ -12,7 +12,7 @@ fn run(w: &mut World, seconds: f64) {
 #[test]
 fn focusing_sends_every_pet_to_bed() {
     let mut w = world(2);
-    w.start_focus(25);
+    w.start_focus("Shh… 25 min");
     assert!(w.pets.iter().all(|p| p.activity == Sleep && !p.commanded));
     assert!(w.pets[0].bubble.as_deref().unwrap().contains("25 min"));
     assert!(w.pets[1].bubble.is_none(), "one pet says so");
@@ -22,7 +22,7 @@ fn focusing_sends_every_pet_to_bed() {
 fn while_focusing_they_sleep_on() {
     let mut w = world(1);
     w.pets[0].energy = 99.0;
-    w.start_focus(25);
+    w.start_focus("Shh… 25 min");
     run(&mut w, 120.0);
     assert_eq!(w.pets[0].activity, Sleep, "full energy doesn't wake it");
 }
@@ -30,7 +30,7 @@ fn while_focusing_they_sleep_on() {
 #[test]
 fn when_time_is_up_they_wake_and_one_says_well_done() {
     let mut w = world(2);
-    w.start_focus(25);
+    w.start_focus("Shh… 25 min");
     run(&mut w, 30.0);
     w.end_focus(true);
     assert!(!w.focusing);
@@ -42,7 +42,7 @@ fn when_time_is_up_they_wake_and_one_says_well_done() {
 #[test]
 fn ending_early_wakes_them_without_a_fuss() {
     let mut w = world(1);
-    w.start_focus(25);
+    w.start_focus("Shh… 25 min");
     w.end_focus(false);
     assert_eq!(w.pets[0].activity, Stretch);
 }
@@ -51,7 +51,20 @@ fn ending_early_wakes_them_without_a_fuss() {
 fn at_night_ending_focus_leaves_them_asleep() {
     let mut w = world(1);
     (w.hour, w.bedtime) = (23.0, Some(22));
-    w.start_focus(25);
+    w.start_focus("Shh… 25 min");
     w.end_focus(false);
     assert_eq!(w.pets[0].activity, Sleep);
+}
+
+#[test]
+fn a_call_starts_when_seen_and_ends_after_a_quiet_while() {
+    let mut c = CallWatch::default();
+    assert_eq!(c.update(0.0, false), None);
+    assert_eq!(c.update(3.0, true), Some(true));
+    assert_eq!(c.update(6.0, true), None);
+    assert_eq!(c.update(9.0, false), None, "a moment with no sign of it");
+    assert_eq!(c.update(40.0, true), None, "still the same call");
+    assert_eq!(c.update(40.0 + CALL_GRACE - 1.0, false), None);
+    assert_eq!(c.update(40.0 + CALL_GRACE, false), Some(false));
+    assert!(!c.on);
 }

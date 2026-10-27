@@ -55,6 +55,25 @@ extern "C" {
     fn CGRectMakeWithDictionaryRepresentation(dict: CFDictionaryRef, rect: *mut CGRect) -> bool;
 }
 
+#[repr(C)]
+struct AudioAddress {
+    selector: u32,
+    scope: u32,
+    element: u32,
+}
+
+#[link(name = "CoreAudio", kind = "framework")]
+extern "C" {
+    fn AudioObjectGetPropertyData(id: u32, addr: *const AudioAddress, qual_size: u32, qual: *const c_void, size: *mut u32, data: *mut c_void) -> i32;
+}
+
+// Core Media IO (cameras) uses the same property addresses as Core Audio.
+#[link(name = "CoreMediaIO", kind = "framework")]
+extern "C" {
+    fn CMIOObjectGetPropertyDataSize(id: u32, addr: *const AudioAddress, qual_size: u32, qual: *const c_void, size: *mut u32) -> i32;
+    fn CMIOObjectGetPropertyData(id: u32, addr: *const AudioAddress, qual_size: u32, qual: *const c_void, size: u32, used: *mut u32, data: *mut c_void) -> i32;
+}
+
 const AX_POINT: u32 = 1;
 const AX_SIZE: u32 = 2;
 const AX_RECT: u32 = 3;
@@ -534,3 +553,68 @@ pub fn upcoming_events(within: f64) -> Vec<crate::domain::CalendarEvent> {
         }
     })
 }
+
+/// A 32-bit Core Audio property of an audio object (1 is the system object).
+fn audio_u32(id: u32, selector: &[u8; 4]) -> Option<u32> {
+    let addr = address(selector);
+    let (mut value, mut size) = (0u32, 4u32);
+    // SAFETY: the property is a UInt32 and `value` has room for it.
+    let err = unsafe { AudioObjectGetPropertyData(id, &addr, 0, std::ptr::null(), &mut size, &mut value as *mut u32 as *mut c_void) };
+    (err == 0).then_some(value)
+}
+
+/// Whether some app is using the default input ("dIn ") or output ("dOut") device right now.
+fn audio_busy(default_device: &[u8; 4]) -> bool {
+    audio_u32(1, default_device).filter(|&d| d != 0).and_then(|d| audio_u32(d, b"gone")).is_some_and(|on| on != 0)
+}
+
+/// An app has the microphone open, as during a call (even muted).
+fn mic_in_use() -> bool { audio_busy(b"dIn ") }
+
+fn address(selector: &[u8; 4]) -> AudioAddress { AudioAddress { selector: u32::from_be_bytes(*selector), scope: u32::from_be_bytes(*b"glob"), element: 0 } }
+
+/// Some app has a camera running.
+fn camera_in_use() -> bool {
+    let devices = address(b"dev#");
+    let mut size = 0u32;
+    // SAFETY: the device list is an array of UInt32 ids, read into a buffer of the size asked for.
+    if unsafe { CMIOObjectGetPropertyDataSize(1, &devices, 0, std::ptr::null(), &mut size) } != 0 || size == 0 { return false }
+    let mut ids = vec![0u32; size as usize / 4];
+    let mut used = 0u32;
+    if unsafe { CMIOObjectGetPropertyData(1, &devices, 0, std::ptr::null(), size, &mut used, ids.as_mut_ptr() as *mut c_void) } != 0 { return false }
+    ids.truncate(used as usize / 4);
+    ids.iter().any(|&id| {
+        let (mut on, mut used) = (0u32, 0u32);
+        // SAFETY: "is running somewhere" is a UInt32.
+        let err = unsafe { CMIOObjectGetPropertyData(id, &address(b"gone"), 0, std::ptr::null(), 4, &mut used, &mut on as *mut u32 as *mut c_void) };
+        err == 0 && on != 0
+    })
+}
+
+/// Browsers (and web apps installed from them) whose window titles show the current tab.
+const BROWSERS: [&str; 6] = ["com.google.Chrome", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "org.chromium.Chromium", "com.apple.Safari"];
+
+/// A browser window is showing a Google Meet call (needs Accessibility to read the titles).
+fn meeting_window_open() -> bool {
+    if !accessibility_trusted() { return false }
+    NSWorkspace::sharedWorkspace().runningApplications().iter().any(|a| {
+        let id = a.bundleIdentifier().map(|s| s.to_string()).unwrap_or_default();
+        if !BROWSERS.iter().any(|b| id.starts_with(b)) { return false }
+        let app = Owned(unsafe { AXUIElementCreateApplication(a.processIdentifier()) });
+        let Some(windows) = app.attr("AXWindows") else { return false };
+        let windows: CFArray<CFType> = unsafe { CFArray::wrap_under_get_rule(windows.0 as CFArrayRef) };
+        windows.iter().any(|w| {
+            attr(w.as_CFTypeRef(), "AXTitle").is_some_and(|t| {
+                let is_text = unsafe { CFGetTypeID(t.0) == CFStringGetTypeID() };
+                is_text && super::is_meeting_title(&unsafe { CFString::wrap_under_get_rule(t.0 as CFStringRef) }.to_string())
+            })
+        })
+    })
+}
+
+/// The user is in a call: the mic or a camera is on, or a Meet call is open in a browser (Meet may leave
+/// the mic closed while muted).
+pub fn in_call() -> bool { mic_in_use() || camera_in_use() || meeting_window_open() }
+
+/// Some app is playing sound.
+pub fn audio_playing() -> bool { audio_busy(b"dOut") }
