@@ -6,6 +6,7 @@ pub mod calendar;
 mod interaction;
 mod props_physics;
 pub mod rhythm;
+pub mod tricks;
 mod world;
 
 pub use behavior::picked_up_line;

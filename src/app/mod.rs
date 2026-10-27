@@ -632,6 +632,7 @@ impl App {
                 for id in pets { w.with_id(id, |w, p| w.start(p, activity, true)) }
             }
             Command::ComeHome(id) => w.with_id(id, |w, p| w.go_home(p, true)),
+            Command::Trick { pet, trick } => w.with_id(pet, |w, p| { w.trick(p, trick); }),
             Command::FeedPet(id) => w.with_id(id, |w, p| w.feed_one(p)),
             Command::FeedAll => w.feed(),
             Command::Treat => w.treat(),

@@ -51,3 +51,13 @@ fn every_action_can_be_imported() {
     assert_eq!(items.len(), ACTIONS.len());
     assert!(items.contains(&item("Walk…", Command::Import { skin: Some("Mochi".into()), action: "walk" })));
 }
+
+#[test]
+fn tricks_are_in_the_pet_menu_and_greyed_out_without_a_clip() {
+    let p = Pet::new(3, "A".into(), Species::Cat, Some(skin(&["sit"])));
+    assert!(titles(&pet_menu(&p)).contains(&"🎾 Tricks".to_string()));
+    let items = trick_items(&p);
+    assert_eq!(items.len(), Trick::ALL.len());
+    assert!(items.contains(&item("🪑 Sit", Command::Trick { pet: 3, trick: Trick::Sit })));
+    assert!(items.contains(&note("💃 Dance  — needs a “play” clip")));
+}

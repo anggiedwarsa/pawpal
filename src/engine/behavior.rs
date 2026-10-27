@@ -27,6 +27,7 @@ impl World {
         p.step_time = 0.0;
         p.target_x = None;
         p.commanded = commanded;
+        p.trick = false;
         p.leaping = p.climbing;
         if on_dock(a) && p.floor > 0.0 {
             p.floor = 0.0;
@@ -126,6 +127,12 @@ impl World {
     }
 
     fn finish(&mut self, p: &mut Pet) {
+        if p.trick {
+            self.trick_done(p);
+            self.start(p, if p.supports(Sit) { Sit } else { Idle }, false);
+            p.timer = 2.6;
+            return;
+        }
         if p.activity == Sleep {
             // At night it just sleeps on until morning.
             if self.sleeps_through(p) {

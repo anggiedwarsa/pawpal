@@ -12,6 +12,7 @@ use crate::domain::Activity::{self, *};
 use crate::domain::Pet;
 use crate::engine::breaks::BREAK_EVERY;
 use crate::engine::rhythm::BEDTIMES;
+use crate::engine::tricks::Trick;
 use crate::platform;
 
 /// What a menu item does when chosen.
@@ -19,6 +20,7 @@ use crate::platform;
 pub enum Command {
     Do { pets: Vec<u64>, activity: Activity },
     ComeHome(u64),
+    Trick { pet: u64, trick: Trick },
     FeedPet(u64),
     FeedAll,
     Treat,
@@ -100,10 +102,23 @@ fn import_items(skin: Option<&str>) -> Vec<Node> {
     ACTIONS.iter().map(|(name, title, _)| item(format!("{title}…"), Command::Import { skin: skin.map(String::from), action: name })).collect()
 }
 
+/// Tricks, with ones the pet has no clip for greyed out and saying which clip to import.
+fn trick_items(p: &Pet) -> Vec<Node> {
+    Trick::ALL
+        .iter()
+        .map(|&t| {
+            if p.supports(t.activity()) { return item(t.title(), Command::Trick { pet: p.id, trick: t }) }
+            let missing = p.skin.as_ref().map_or("walk", |s| s.missing_clip(t.activity()));
+            note(format!("{}  — needs a “{missing}” clip", t.title()))
+        })
+        .collect()
+}
+
 pub fn pet_menu(p: &Pet) -> Vec<Node> {
     let mut m = stats_items(p);
     m.push(Node::Sep);
     m.push(sub("Do Activity", activity_items(&[p])));
+    m.push(sub("🎾 Tricks", trick_items(p)));
     if p.activity == VisitCursor || p.floor > 0.0 { m.push(item("🏠 Come Home", Command::ComeHome(p.id))) }
     m.push(item("🍗 Feed", Command::FeedPet(p.id)));
     m.push(item("✏️ Rename…", Command::Rename(p.id)));
