@@ -41,6 +41,8 @@ pub struct World {
     /// The local time (hours, 0–24) and bedtime setting, fed in by the app; see `rhythm`.
     pub hour: f64,
     pub bedtime: Option<u32>,
+    /// Focus mode is on: pets stay in bed (see `focus`).
+    pub focusing: bool,
 }
 
 /// Seconds the cursor must stay still before a pet comes to visit it.
@@ -84,6 +86,7 @@ impl World {
             fullscreen: false,
             hour: 12.0,
             bedtime: None,
+            focusing: false,
             below: 0.0,
             dock_start: f64::NEG_INFINITY,
             dock_end: f64::INFINITY,

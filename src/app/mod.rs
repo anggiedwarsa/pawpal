@@ -137,6 +137,8 @@ pub struct App {
     reminders: Reminders,
     breaks: BreakTimer,
     presence: Presence,
+    /// When focus mode ends (seconds since the epoch).
+    focus_until: Option<f64>,
     /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
     compact: bool,
     low_since: Option<Instant>,
@@ -179,6 +181,7 @@ pub fn run() {
         reminders: Reminders::default(),
         breaks: BreakTimer::default(),
         presence: Presence::default(),
+        focus_until: None,
         logged_typing: false,
         import_rx: None,
         login_enabled: login_item().and_then(|l| l.is_enabled().ok()),
@@ -373,6 +376,7 @@ impl App {
             self.build_tray();
             (self.world.hour, self.world.bedtime) = (platform::local_hour(), settings::bedtime());
             if let Some(away) = self.presence.back(now_secs(), self.world.mouse_still) { self.world.welcome_back(away) }
+            if self.focus_until.is_some_and(|t| now_secs() >= t) { self.end_focus(true) }
         }
         self.poll_import();
         self.handle_menu_events(el);
@@ -488,6 +492,15 @@ impl App {
         }
     }
 
+    /// Focus time is up (`finished`) or was ended from the menu.
+    fn end_focus(&mut self, finished: bool) {
+        self.focus_until = None;
+        self.world.end_focus(finished);
+        // The well-done is the break, so the break count starts again.
+        if finished { self.breaks.reset() }
+        self.build_tray();
+    }
+
     /// Every few seconds: sends a pet out with a reminder the user set, once it's due (one at a time).
     fn check_alarms(&mut self) {
         if self.world.pets.is_empty() || self.world.pets.iter().any(|p| p.activity == Remind) { return }
@@ -525,7 +538,7 @@ impl App {
     /// It waits while a movie is on or another heads-up is out.
     fn check_breaks(&mut self) {
         let w = &self.world;
-        let hold = w.pets.is_empty() || w.fullscreen || w.pets.iter().any(|p| p.activity == Remind);
+        let hold = w.pets.is_empty() || w.fullscreen || w.focusing || w.pets.iter().any(|p| p.activity == Remind);
         if self.breaks.due(now_secs(), w.mouse_still, settings::break_every(), hold) {
             self.world.remind(nudge_text());
         }
@@ -677,6 +690,12 @@ impl App {
             Command::ThrowBall => w.throw_ball(),
             Command::ReleaseButterfly => w.release_butterfly(),
             Command::RemindMe => self.remind_me(),
+            Command::Focus(n) => {
+                self.focus_until = Some(now_secs() + n as f64 * 60.0);
+                self.world.start_focus(n);
+                self.build_tray();
+            }
+            Command::EndFocus => self.end_focus(false),
             Command::CancelAlarm(id) => settings::set_alarms(settings::alarms().into_iter().filter(|a| a.id != id).collect()),
             Command::Rename(id) => self.rename(id),
             Command::Flip(name) => settings::toggle_flipped(&name),

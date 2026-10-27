@@ -12,6 +12,7 @@ use crate::domain::Activity::{self, *};
 use crate::domain::Pet;
 use crate::engine::alarms::{clock_label, Alarm};
 use crate::engine::breaks::BREAK_EVERY;
+use crate::engine::focus::FOCUS_FOR;
 use crate::engine::rhythm::BEDTIMES;
 use crate::engine::tricks::Trick;
 use crate::platform;
@@ -28,6 +29,8 @@ pub enum Command {
     ThrowBall,
     ReleaseButterfly,
     RemindMe,
+    Focus(u32),
+    EndFocus,
     CancelAlarm(u64),
     Rename(u64),
     Flip(String),
@@ -155,6 +158,13 @@ impl App {
             m.push(item("⚽ Throw a Ball", Command::ThrowBall));
             m.push(item("🦋 Release a Butterfly", Command::ReleaseButterfly));
             m.push(item("⏰ Remind Me…", Command::RemindMe));
+            match self.focus_until {
+                Some(until) => {
+                    let left = ((until - super::now_secs()) / 60.0).ceil().max(1.0);
+                    m.push(item(format!("🎯 End Focus ({left} min left)"), Command::EndFocus));
+                }
+                None => m.push(sub("🎯 Focus", FOCUS_FOR.into_iter().map(|n| item(format!("{n} Minutes"), Command::Focus(n))).collect())),
+            }
             let alarms = settings::alarms();
             if !alarms.is_empty() {
                 m.push(sub(format!("⏰ Upcoming Reminders ({})", alarms.len()), alarm_items(alarms, super::now_secs(), platform::local_hour())));

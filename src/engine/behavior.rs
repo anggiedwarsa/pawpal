@@ -163,6 +163,7 @@ impl World {
         if self.nearest_bowl(p).is_some() && p.hunger > 10.0 && can(Eat) { return self.start(p, Eat, false) }
         if self.nearest_ball(p).is_some() && can(PlayBall) && chance(0.6) { return self.start(p, PlayBall, false) }
         if self.nearest_butterfly(p).is_some() && can(ChaseButterfly) && chance(0.7) { return self.start(p, ChaseButterfly, false) }
+        if self.focusing && can(Sleep) { return self.start(p, Sleep, false) }
         if self.day() == DayPart::Night && can(Sleep) {
             if p.activity != Stretch { p.say("*yawn* Bedtime… 🌙", 2.6) }
             return self.start(p, Sleep, false);
@@ -191,8 +192,10 @@ impl World {
         self.start(p, Idle, false);
     }
 
-    /// Whether a nap that's over carries on: at night, unless the pet was only sent for a nap.
-    fn sleeps_through(&self, p: &Pet) -> bool { !p.commanded && settings::auto() && self.day() == DayPart::Night }
+    /// Whether a nap that's over carries on: while focusing, or at night, unless the pet was only sent for a nap.
+    pub(super) fn sleeps_through(&self, p: &Pet) -> bool {
+        !p.commanded && (self.focusing || (settings::auto() && self.day() == DayPart::Night))
+    }
 
     /// Moves toward tx; returns true once arrived (or straight away for pets that can't travel).
     pub(super) fn move_to(&self, p: &mut Pet, tx: f64, speed: f64) -> bool {

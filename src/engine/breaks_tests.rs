@@ -50,6 +50,14 @@ fn a_held_nudge_comes_once_the_hold_ends() {
 }
 
 #[test]
+fn a_reset_starts_the_count_again() {
+    let mut t = BreakTimer::default();
+    work(&mut t, 0.0, 49.0, 1.0, 50);
+    t.reset();
+    assert_eq!(work(&mut t, 49.0 * 60.0 + 5.0, 10.0, 1.0, 50), 0);
+}
+
+#[test]
 fn off_never_nudges() {
     let mut t = BreakTimer::default();
     assert_eq!(work(&mut t, 0.0, 300.0, 1.0, 0), 0);

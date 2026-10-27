@@ -40,6 +40,9 @@ impl BreakTimer {
         self.worked = 0.0;
         true
     }
+
+    /// Starts counting again, as after a break.
+    pub fn reset(&mut self) { self.worked = 0.0 }
 }
 
 /// What the pet suggests.
