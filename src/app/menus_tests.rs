@@ -61,3 +61,17 @@ fn tricks_are_in_the_pet_menu_and_greyed_out_without_a_clip() {
     assert!(items.contains(&item("🪑 Sit", Command::Trick { pet: 3, trick: Trick::Sit })));
     assert!(items.contains(&note("💃 Dance  — needs a “play” clip")));
 }
+
+#[test]
+fn upcoming_reminders_are_listed_soonest_first_and_cancel_when_chosen() {
+    let a = |id, text: &str, at| Alarm { id, text: text.into(), at };
+    let items = alarm_items(vec![a(2, "Laundry", 7200.0), a(1, " Call mum ", 3600.0)], 0.0, 14.0);
+    assert_eq!(
+        items,
+        vec![
+            note("Choose one to cancel it"),
+            item("✖ 3:00 PM — Call mum", Command::CancelAlarm(1)),
+            item("✖ 4:00 PM — Laundry", Command::CancelAlarm(2)),
+        ]
+    );
+}

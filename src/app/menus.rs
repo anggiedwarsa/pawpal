@@ -10,6 +10,7 @@ use crate::data::settings::{self, WalkArea};
 use crate::data::skin::ACTIONS;
 use crate::domain::Activity::{self, *};
 use crate::domain::Pet;
+use crate::engine::alarms::{clock_label, Alarm};
 use crate::engine::breaks::BREAK_EVERY;
 use crate::engine::rhythm::BEDTIMES;
 use crate::engine::tricks::Trick;
@@ -26,6 +27,8 @@ pub enum Command {
     Treat,
     ThrowBall,
     ReleaseButterfly,
+    RemindMe,
+    CancelAlarm(u64),
     Rename(u64),
     Flip(String),
     Import { skin: Option<String>, action: &'static str },
@@ -55,6 +58,14 @@ fn item(title: impl Into<String>, cmd: Command) -> Node { Node::Item { title: ti
 fn check(title: impl Into<String>, on: bool, cmd: Command) -> Node { Node::Item { title: title.into(), cmd: Some(cmd), checked: Some(on) } }
 fn note(title: impl Into<String>) -> Node { Node::Item { title: title.into(), cmd: None, checked: None } }
 fn sub(title: impl Into<String>, children: Vec<Node>) -> Node { Node::Sub { title: title.into(), children } }
+
+/// Set reminders, soonest first; choosing one cancels it.
+fn alarm_items(mut alarms: Vec<Alarm>, now: f64, hour: f64) -> Vec<Node> {
+    alarms.sort_by(|a, b| a.at.total_cmp(&b.at));
+    let mut m = vec![note("Choose one to cancel it")];
+    m.extend(alarms.iter().map(|a| item(format!("✖ {} — {}", clock_label(a.at, now, hour), a.text.trim()), Command::CancelAlarm(a.id))));
+    m
+}
 
 /// An hour on the clock, as a menu shows it.
 fn clock(h: u32) -> String {
@@ -143,6 +154,11 @@ impl App {
             m.push(item("🐟 Give Treats", Command::Treat));
             m.push(item("⚽ Throw a Ball", Command::ThrowBall));
             m.push(item("🦋 Release a Butterfly", Command::ReleaseButterfly));
+            m.push(item("⏰ Remind Me…", Command::RemindMe));
+            let alarms = settings::alarms();
+            if !alarms.is_empty() {
+                m.push(sub(format!("⏰ Upcoming Reminders ({})", alarms.len()), alarm_items(alarms, super::now_secs(), platform::local_hour())));
+            }
             m.push(Node::Sep);
             for p in &pets {
                 m.push(sub(format!("🐈 {}", p.name), pet_menu(p)));

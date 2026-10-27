@@ -33,6 +33,7 @@ use crate::data::settings::{self, PetSave};
 use crate::data::skin::{self, Skin};
 use crate::domain::Activity::*;
 use crate::domain::{Pet, Species};
+use crate::engine::alarms::{alarm_text, clock_label, parse_when, take_due, Alarm};
 use crate::engine::breaks::{nudge_text, BreakTimer};
 use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
 use crate::engine::{World, TYPING_PAUSE};
@@ -374,6 +375,7 @@ impl App {
         if every(10) { self.watch_typing(every(30)) }
         if every(150) {
             self.check_calendar();
+            self.check_alarms();
             self.check_breaks();
         }
 
@@ -482,13 +484,45 @@ impl App {
         }
     }
 
+    /// Every few seconds: sends a pet out with a reminder the user set, once it's due (one at a time).
+    fn check_alarms(&mut self) {
+        if self.world.pets.is_empty() || self.world.pets.iter().any(|p| p.activity == Remind) { return }
+        let mut alarms = settings::alarms();
+        if let Some(a) = take_due(&mut alarms, now_secs()) {
+            settings::set_alarms(alarms);
+            self.world.remind(&alarm_text(&a.text));
+        }
+    }
+
+    /// "⏰ Remind Me…": asks what and when, then a pet says it'll remember.
+    fn remind_me(&mut self) {
+        let Some(text) = platform::prompt_text("PawPal", "Remind me to…", "") else { return };
+        let text = text.trim().to_string();
+        if text.is_empty() { return }
+        let mut ask = "When? For example: 20 min, 1h 30m, 3:30 pm";
+        let at = loop {
+            let Some(when) = platform::prompt_text("PawPal", ask, "15 min") else { return };
+            if let Some(at) = parse_when(&when, now_secs(), platform::local_hour()) { break at }
+            ask = "Sorry, I didn't get that. Try 20 min, 1h 30m or 3:30 pm (up to a day ahead).";
+        };
+        let now = now_secs();
+        let label = clock_label(at, now, platform::local_hour());
+        let mut alarms = settings::alarms();
+        alarms.push(Alarm { id: (now * 1000.0) as u64, text, at });
+        settings::set_alarms(alarms);
+        let mid = self.world.width / 2.0;
+        if let Some(p) = self.world.pets.iter_mut().filter(|p| p.activity != Dragged).min_by(|a, b| (a.x - mid).abs().total_cmp(&(b.x - mid).abs())) {
+            p.say(format!("Okay! I'll remind you at {label} ⏰"), 3.0);
+        }
+        self.build_tray();
+    }
+
     /// Every few seconds: sends a pet out to suggest a break after a long while at the computer.
     /// It waits while a movie is on or another heads-up is out.
     fn check_breaks(&mut self) {
         let w = &self.world;
         let hold = w.pets.is_empty() || w.fullscreen || w.pets.iter().any(|p| p.activity == Remind);
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
-        if self.breaks.due(now, w.mouse_still, settings::break_every(), hold) {
+        if self.breaks.due(now_secs(), w.mouse_still, settings::break_every(), hold) {
             self.world.remind(nudge_text());
         }
     }
@@ -638,6 +672,8 @@ impl App {
             Command::Treat => w.treat(),
             Command::ThrowBall => w.throw_ball(),
             Command::ReleaseButterfly => w.release_butterfly(),
+            Command::RemindMe => self.remind_me(),
+            Command::CancelAlarm(id) => settings::set_alarms(settings::alarms().into_iter().filter(|a| a.id != id).collect()),
             Command::Rename(id) => self.rename(id),
             Command::Flip(name) => settings::toggle_flipped(&name),
             Command::Import { skin, action } => self.import_clip_ui(skin, action),
@@ -750,3 +786,6 @@ fn paw_icon() -> tray_icon::Icon {
     let img = image::imageops::resize(&img, 64, 64, image::imageops::FilterType::Triangle);
     tray_icon::Icon::from_rgba(img.into_raw(), 64, 64).expect("valid icon")
 }
+
+/// Seconds since the epoch.
+pub(super) fn now_secs() -> f64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64()) }
