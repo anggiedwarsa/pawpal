@@ -216,14 +216,14 @@ fn call_state_from(devices_on: bool, titles: &[String]) -> CallState {
     state
 }
 
-/// Whether a window title is a Google Meet call ("Meet - abc-defg-hij", maybe followed by the browser's name),
-/// not Meet's home page.
+/// Whether a window title is a Google Meet call or its waiting room: "Meet - abc-defg-hij" or "Meet - Team standup"
+/// (a meeting from the calendar), maybe followed by the browser's name. Meet's home page is just "Google Meet".
 #[allow(dead_code)]
 pub fn is_meeting_title(title: &str) -> bool {
     let Some(rest) = title.strip_prefix("Meet - ").or_else(|| title.strip_prefix("Meet – ")) else { return false };
-    let code: String = rest.chars().take_while(|c| c.is_ascii_lowercase() || *c == '-').collect();
-    let parts: Vec<usize> = code.split('-').map(str::len).collect();
-    parts == [3, 4, 3]
+    let name = rest.split(" - ").next().unwrap_or("").trim();
+    const BROWSERS: [&str; 6] = ["Google Chrome", "Microsoft Edge", "Brave", "Chromium", "Safari", "Arc"];
+    !name.is_empty() && !BROWSERS.iter().any(|b| name.starts_with(b))
 }
 
 /// Opens a folder in the system file browser.

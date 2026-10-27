@@ -94,9 +94,10 @@ fn audio_state() { eprintln!("AUDIO ax={} call={:?} playing={} battery={:?} date
 fn meet_calls_are_told_from_meets_home_page() {
     assert!(is_meeting_title("Meet - abc-defg-hij"));
     assert!(is_meeting_title("Meet – abc-defg-hij - Google Chrome - Work"));
+    assert!(is_meeting_title("Meet - Scrum IS - Camera and microphone recording - Google Chrome - Anggi"), "a named meeting");
+    assert!(is_meeting_title("Meet - Scrum IS - Google Chrome"));
     assert!(!is_meeting_title("Google Meet"));
     assert!(!is_meeting_title("Meet - Google Chrome"));
-    assert!(!is_meeting_title("Meet - abc-defg"));
     assert!(!is_meeting_title("Meeting notes - abc-defg-hij"));
 }
 
