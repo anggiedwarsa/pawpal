@@ -104,6 +104,19 @@ fn calm_until_something_moves() {
 }
 
 #[test]
+fn walking_is_slow_and_running_or_jumping_is_fast() {
+    let mut w = world(1);
+    w.pets[0].activity = Walk;
+    w.pets[0].vx = 30.0 * w.s;
+    assert!(!w.is_fast() && !w.is_calm());
+    w.pets[0].vx = -90.0 * w.s;
+    assert!(w.is_fast());
+    w.pets[0].vx = 0.0;
+    w.pets[0].leaping = true;
+    assert!(w.is_fast());
+}
+
+#[test]
 fn stepping_tracks_the_cursor_and_visits_after_idling() {
     let mut w = world(1);
     w.step(0.1, pt(10.0, 10.0), f64::INFINITY);

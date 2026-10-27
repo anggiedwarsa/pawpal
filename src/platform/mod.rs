@@ -61,6 +61,19 @@ impl KeyGuess {
     }
 }
 
+/// Guesses the caret of a terminal that shows its screen to Accessibility but not where the cursor is
+/// (Ghostty): `text` is the visible grid, one line per row, inside `frame`. The cursor is taken to sit
+/// just after the last character on screen, which is where a shell prompt leaves it.
+#[allow(dead_code)]
+pub fn terminal_caret(text: &str, frame: crate::support::Rect) -> Option<crate::support::Rect> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let cols = lines.iter().map(|l| l.chars().count()).max()?;
+    let row = lines.iter().rposition(|l| !l.trim().is_empty())?;
+    let col = lines[row].trim_end().chars().count();
+    let (cw, rh) = (frame.w / cols as f64, frame.h / lines.len() as f64);
+    Some(crate::support::Rect::new(frame.x + col as f64 * cw, frame.y + row as f64 * rh, cw, rh))
+}
+
 /// Opens a folder in the system file browser.
 pub fn open_folder(path: &std::path::Path) {
     let opener = if cfg!(target_os = "macos") { "open" } else if cfg!(windows) { "explorer" } else { "xdg-open" };

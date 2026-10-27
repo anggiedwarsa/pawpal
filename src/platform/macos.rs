@@ -11,11 +11,11 @@ use core_foundation::base::{CFGetTypeID, CFRelease, CFType, CFTypeID, CFTypeRef,
 use core_foundation::boolean::CFBoolean;
 use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
 use core_foundation::number::CFNumber;
-use core_foundation::string::{CFString, CFStringRef};
+use core_foundation::string::{CFString, CFStringGetTypeID, CFStringRef};
 use image::RgbaImage;
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplicationActivationOptions, NSApplicationActivationPolicy, NSEvent, NSRunningApplication, NSScreen, NSView, NSWindowCollectionBehavior, NSWorkspace};
-use objc2_foundation::NSString;
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::Window;
 
@@ -216,9 +216,17 @@ fn caret() -> Option<CGRect> {
             if let Some(r) = ax_value::<CGRect>(bounds.0, AX_RECT).filter(|r| r.h > 0.0) { return Some(r) }
         }
     }
-    // A small text field is fine to avoid whole; a big text view isn't a useful spot.
     let [x, y] = ax_value::<[f64; 2]>(element.attr("AXPosition")?.0, AX_POINT)?;
     let [w, h] = ax_value::<[f64; 2]>(element.attr("AXSize")?.0, AX_SIZE)?;
+    // Terminals that can't place the caret still show their screen text: guess from that.
+    if TERMINALS.contains(&frontmost_app().as_str()) {
+        let text = element.attr("AXValue").filter(|v| unsafe { CFGetTypeID(v.0) == CFStringGetTypeID() });
+        if let Some(text) = text {
+            let text = unsafe { CFString::wrap_under_get_rule(text.0 as CFStringRef) }.to_string();
+            if let Some(r) = super::terminal_caret(&text, Rect::new(x, y, w, h)) { return Some(CGRect { x: r.x, y: r.y, w: r.w, h: r.h }) }
+        }
+    }
+    // A small text field is fine to avoid whole; a big text view isn't a useful spot.
     (h < 200.0).then_some(CGRect { x, y, w, h })
 }
 
@@ -321,6 +329,18 @@ pub fn prepare_window(window: &Window) {
     );
     win.setHidesOnDeactivate(false);
     win.setHasShadow(false);
+}
+
+/// Moves and resizes the window in one step, keeping its bottom edge put; winit does it in two
+/// (move, then resize), and the screen can show the old picture shifted in between.
+pub fn set_frame(window: &Window, r: Rect) -> bool {
+    let Some(view) = ns_view(window) else { return false };
+    let view: &NSView = unsafe { view.cast::<NSView>().as_ref() };
+    let Some(win) = view.window() else { return false };
+    let k = scale();
+    let frame = NSRect::new(NSPoint::new(r.x / k, primary_height() - r.max_y() / k), NSSize::new(r.w / k, r.h / k));
+    win.setFrame_display(frame, false);
+    true
 }
 
 fn ns_view(window: &Window) -> Option<std::ptr::NonNull<c_void>> {

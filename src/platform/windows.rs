@@ -142,6 +142,9 @@ fn hwnd(window: &Window) -> Option<*mut c_void> {
     }
 }
 
+/// Moving and resizing at once needs nothing special here: the app falls back to winit.
+pub fn set_frame(_window: &Window, _r: Rect) -> bool { false }
+
 /// Keeps the overlay out of Alt-Tab and stops clicks on pets from taking focus from the user's app.
 pub fn prepare_window(window: &Window) {
     let Some(h) = hwnd(window) else { return };

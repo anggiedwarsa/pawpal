@@ -48,7 +48,8 @@ pub struct Stage {
     fonts: FontSystem,
     swash: SwashCache,
     text_cache: HashMap<String, Img>,
-    clips: HashMap<PathBuf, Vec<Option<Img>>>,
+    /// Decoded frames per clip folder, with the pixel height they were scaled to.
+    clips: HashMap<PathBuf, (u32, Vec<Option<Img>>)>,
     recent: Vec<PathBuf>,
     anims: HashMap<u64, Anim>,
     /// Physical pixels per point.
@@ -95,7 +96,7 @@ impl Stage {
 
     /// Forgets decoded frames, so re-imported clips are read again.
     pub fn reload_clips(&mut self) {
-        for (_, frames) in self.clips.drain() {
+        for (_, (_, frames)) in self.clips.drain() {
             for f in frames.into_iter().flatten() {
                 self.canvas.delete_image(f.id);
             }
@@ -182,9 +183,9 @@ impl Stage {
             Some(k) => ((k * clip.count() as f64) as usize).min(clip.count().max(1) - 1),
             None => (anim.time * clip.fps) as usize % clip.count().max(1),
         };
-        let frame = self.frame(clip, idx)?;
-
         let h = clip.height * s;
+        let frame = self.frame(clip, idx, (h * self.dpi).ceil() as u32)?;
+
         let w = h * frame.w / frame.h;
         p.size = Size { width: w, height: h };
         p.reach = clip.reach.unwrap_or(0.5) * w;
@@ -202,32 +203,47 @@ impl Stage {
     }
 
     /// Frames are decoded only while the clip is in use; clips that haven't played recently are dropped.
-    fn frame(&mut self, clip: &Clip, i: usize) -> Option<Img> {
-        if !self.clips.contains_key(&clip.dir) {
-            let flags = if clip.pixel_art { ImageFlags::NEAREST } else { ImageFlags::empty() };
-            let frames = clip.files.iter().map(|f| self.load_image(f, flags)).collect();
-            self.clips.insert(clip.dir.clone(), frames);
+    /// They're kept at the `px` pixel height they're drawn at, not the (often much bigger) source size.
+    fn frame(&mut self, clip: &Clip, i: usize, px: u32) -> Option<Img> {
+        if self.clips.get(&clip.dir).is_none_or(|(at, _)| *at != px) {
+            for f in self.clips.remove(&clip.dir).into_iter().flat_map(|(_, f)| f).flatten() {
+                self.canvas.delete_image(f.id);
+            }
+            let frames = clip.files.iter().map(|f| self.load_image(f, clip.pixel_art, px)).collect();
+            self.clips.insert(clip.dir.clone(), (px, frames));
         }
         if self.recent.last() != Some(&clip.dir) {
             self.recent.retain(|d| d != &clip.dir);
             self.recent.push(clip.dir.clone());
             while self.recent.len() > CLIP_CACHE_LIMIT {
                 let old = self.recent.remove(0);
-                for f in self.clips.remove(&old).into_iter().flatten().flatten() {
+                for f in self.clips.remove(&old).into_iter().flat_map(|(_, f)| f).flatten() {
                     self.canvas.delete_image(f.id);
                 }
             }
         }
-        let frames = self.clips.get(&clip.dir)?;
+        let (_, frames) = self.clips.get(&clip.dir)?;
         if frames.is_empty() { return None }
         frames[i % frames.len()]
     }
 
-    fn load_image(&mut self, file: &std::path::Path, flags: ImageFlags) -> Option<Img> {
-        let img = image::open(file).ok()?.to_rgba8();
+    /// Loads a frame scaled down to `px` pixels high (pixel art stays as it is and is scaled up with hard edges).
+    /// `w` and `h` keep the source size, so the pet's proportions don't drift with rounding.
+    fn load_image(&mut self, file: &std::path::Path, pixel_art: bool, px: u32) -> Option<Img> {
+        let mut img = image::open(file).ok()?.to_rgba8();
         let (w, h) = img.dimensions();
-        let px: Vec<RGBA8> = img.pixels().map(|p| RGBA8::new(p[0], p[1], p[2], p[3])).collect();
-        let id = self.canvas.create_image(ImageSource::Rgba(ImgRef::new(&px, w as usize, h as usize)), flags).ok()?;
+        // Premultiplied, so the transparent background doesn't bleed dark edges in when scaling down.
+        for p in img.pixels_mut() {
+            let a = p[3] as u32;
+            for c in &mut p.0[..3] { *c = (*c as u32 * a / 255) as u8 }
+        }
+        if !pixel_art && px > 0 && px < h {
+            let pw = ((w as f64 * px as f64 / h as f64).round() as u32).max(1);
+            img = image::imageops::resize(&img, pw, px, image::imageops::FilterType::Triangle);
+        }
+        let flags = if pixel_art { ImageFlags::NEAREST | ImageFlags::PREMULTIPLIED } else { ImageFlags::PREMULTIPLIED };
+        let pixels: Vec<RGBA8> = img.pixels().map(|p| RGBA8::new(p[0], p[1], p[2], p[3])).collect();
+        let id = self.canvas.create_image(ImageSource::Rgba(ImgRef::new(&pixels, img.width() as usize, img.height() as usize)), flags).ok()?;
         Some(Img { id, w: w as f64, h: h as f64 })
     }
 

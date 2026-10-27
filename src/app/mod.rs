@@ -168,8 +168,17 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
         let now = Instant::now();
         if now >= self.next_frame {
-            self.frame(el);
-            self.next_frame += FRAME;
+            // To save battery: 10 fps while pets are quiet, 15 while they walk about (clips play at 10-14 fps
+            // anyway), and the full 30 only for fast motion and while the user holds a pet.
+            let ticks = if self.pointer.pressed.is_some() || self.world.is_fast() {
+                1
+            } else if self.world.is_calm() && !self.wants_mouse() {
+                3
+            } else {
+                2
+            };
+            self.frame(el, ticks);
+            self.next_frame += FRAME * ticks as u32;
             if self.next_frame < now { self.next_frame = now + FRAME }
         }
         el.set_control_flow(ControlFlow::WaitUntil(self.next_frame));
@@ -275,17 +284,18 @@ impl App {
         }
     }
 
-    fn frame(&mut self, el: &ActiveEventLoop) {
-        self.frame_count += 1;
-        if self.frame_count % 60 == 0 { self.layout() }
-        if self.frame_count % 900 == 0 { self.save_pets() }
-        if self.frame_count % 30 == 0 { self.build_tray() }
+    /// One step of `ticks` frames (more than one while the pets are quiet).
+    fn frame(&mut self, el: &ActiveEventLoop, ticks: u64) {
+        self.frame_count += ticks;
+        let (now, before) = (self.frame_count, self.frame_count - ticks);
+        let every = |n: u64| now / n != before / n;
+        if every(60) { self.layout() }
+        if every(900) { self.save_pets() }
+        if every(30) { self.build_tray() }
         self.poll_import();
         self.handle_menu_events(el);
-        if self.frame_count % 10 == 0 { self.watch_typing() }
-        if self.frame_count % 150 == 0 { self.check_calendar() }
-        // Quiet pets are animated at 10 fps to save battery.
-        if self.frame_count % 3 != 0 && self.world.is_calm() && !self.wants_mouse() { return }
+        if every(10) { self.watch_typing(every(30)) }
+        if every(150) { self.check_calendar() }
 
         let now = Instant::now();
         let dt = (now - self.last_tick).as_secs_f64().min(0.1);
@@ -341,9 +351,10 @@ impl App {
         }
     }
 
-    fn watch_typing(&mut self) {
+    /// `check_fullscreen` is passed about once a second: listing every window costs more than the rest.
+    fn watch_typing(&mut self, check_fullscreen: bool) {
         platform::note_frontmost();
-        let fullscreen = platform::fullscreen_active();
+        let fullscreen = if check_fullscreen { platform::fullscreen_active() } else { self.world.fullscreen };
         if fullscreen != self.world.fullscreen {
             self.world.set_fullscreen(fullscreen);
             self.layout();
@@ -408,10 +419,14 @@ impl App {
         let frame = Rect::new(shelf.screen.x, top, shelf.screen.w, bottom - top);
         if frame != self.window_px {
             self.window_px = frame;
-            g.window.set_outer_position(PhysicalPosition::new(frame.x.round() as i32, frame.y.round() as i32));
-            if let Some(size) = g.window.request_inner_size(PhysicalSize::new(frame.w.round() as u32, frame.h.round() as u32)) {
-                self.resize(size);
+            let size = PhysicalSize::new(frame.w.round() as u32, frame.h.round() as u32);
+            if !platform::set_frame(&g.window, frame) {
+                g.window.set_outer_position(PhysicalPosition::new(frame.x.round() as i32, frame.y.round() as i32));
+                let _ = g.window.request_inner_size(size);
             }
+            // Size the drawing to the new window now: macOS reports the resize only later, and a frame
+            // drawn at the old size gets stretched to fit (pets look bigger, or ghost above themselves).
+            self.resize(size);
         }
         let w = &mut self.world;
         w.ground = ground;

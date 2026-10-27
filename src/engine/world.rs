@@ -147,6 +147,13 @@ impl World {
         top
     }
 
+    /// Something moves fast enough to look choppy at 20 fps: running, jumping, falling, being dragged, toys flying.
+    pub fn is_fast(&self) -> bool {
+        !self.balls.is_empty()
+            || !self.butterflies.is_empty()
+            || self.pets.iter().any(|p| matches!(p.activity, Dragged | Falling | Hop) || p.leaping || !p.on_ground() || p.vx.abs() > 50.0 * self.s)
+    }
+
     pub fn is_calm(&self) -> bool {
         self.balls.is_empty()
             && self.butterflies.is_empty()
