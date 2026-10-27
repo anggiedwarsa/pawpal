@@ -7,7 +7,7 @@ mod props;
 mod species;
 
 pub use activity::Activity;
-pub use event::CalendarEvent;
+pub use event::{CalendarEvent, ClickAction};
 pub use pet::{Pet, Resume};
 pub use props::{same_level, Ball, Bowl, Butterfly, Particle};
 pub use species::Species;

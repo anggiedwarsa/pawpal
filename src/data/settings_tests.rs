@@ -9,6 +9,8 @@ fn missing_keys_take_defaults() {
     assert!(p.pets.is_empty() && p.asked_accessibility.is_none());
     assert!(!p.avoid_cursor, "pets don't run from the cursor unless asked");
     assert!(p.check_updates, "updates are looked for unless turned off");
+    assert!(p.morning_agenda && p.focus_offers && p.back_to_back && p.calendar_url.is_none());
+    assert_eq!(p.wrap_up, None, "no wrap-up unless a time is picked");
 }
 
 #[test]

@@ -25,6 +25,7 @@ impl World {
         p.resume = None;
         if a != Hop { p.perch_pending = None }
         p.buddy = None;
+        p.on_click = None;
         p.activity = a;
         p.age = 0.0;
         p.step = 0;

@@ -27,12 +27,15 @@ fastrand = "2"
 # Shared pets are zip files; the frames inside are PNGs already, so they are stored, not compressed.
 zip = { version = "9", default-features = false }
 global-hotkey = "0.9"
+rrule = "0.14"
+chrono = "0.4"
+chrono-tz = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-event-kit = { version = "0.3", default-features = false, features = ["std", "EKEventStore", "EKEvent", "EKCalendarItem", "EKObject", "EKTypes", "EKCalendar", "block2"] }
 block2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString", "NSUserDefaults", "NSArray", "NSDictionary", "NSValue", "NSGeometry", "NSDate", "NSBundle", "NSError", "NSData"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSUserDefaults", "NSArray", "NSDictionary", "NSValue", "NSGeometry", "NSDate", "NSBundle", "NSError", "NSData", "NSURL"] }
 objc2-app-kit = { version = "0.3", features = ["NSScreen", "NSWindow", "NSView", "NSRunningApplication", "NSWorkspace", "NSEvent", "NSResponder", "NSGraphics", "NSApplication", "NSImage", "NSAlert", "NSButton", "NSControl"] }
 core-foundation = "0.10"
 plist = "1"

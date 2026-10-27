@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use super::World;
 use crate::domain::Activity::{self, *};
-use crate::domain::{CalendarEvent, Pet, Resume};
+use crate::domain::{CalendarEvent, ClickAction, Pet, Resume};
 use crate::support::*;
 
 /// Minutes before an event when a pet comes to say so.
@@ -56,11 +56,15 @@ fn passing(a: Activity) -> bool { matches!(a, Dragged | Falling | Hop | Jump | R
 
 impl World {
     /// Sends the pet nearest the middle of the screen out with a heads-up (or refreshes the one already out).
-    pub fn remind(&mut self, text: &str) {
+    pub fn remind(&mut self, text: &str) { self.remind_with(text, None) }
+
+    /// A heads-up that does something when the pet is clicked, such as joining the meeting.
+    pub fn remind_with(&mut self, text: &str, on_click: Option<ClickAction>) {
         let mid = self.width / 2.0;
         if let Some(i) = self.pets.iter().position(|p| p.activity == Remind) {
             return self.with_pet(i, |_, p| {
                 p.say(text, REMIND_TIME + 15.0);
+                p.on_click = on_click;
                 if p.step == TELL { p.timer = REMIND_TIME }
             });
         }
@@ -79,6 +83,7 @@ impl World {
             };
             w.start(p, Remind, true);
             p.resume = Some(resume);
+            p.on_click = on_click;
             p.say(text, REMIND_TIME + 15.0);
         });
     }

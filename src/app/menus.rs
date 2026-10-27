@@ -15,6 +15,7 @@ use crate::engine::breaks::BREAK_EVERY;
 use crate::engine::focus::FOCUS_FOR;
 use crate::engine::rhythm::BEDTIMES;
 use crate::engine::tricks::Trick;
+use crate::engine::workday::WRAP_UP_AT;
 use crate::platform;
 
 /// What a menu item does when chosen.
@@ -54,6 +55,11 @@ pub enum Command {
     ToggleAvoidCursor,
     ToggleAuto,
     ToggleCalendar,
+    ToggleAgenda,
+    ToggleFocusOffers,
+    ToggleBackToBack,
+    SetCalendarLink,
+    WrapUp(Option<u32>),
     BreakEvery(u32),
     Bedtime(Option<u32>),
     ToggleLogin,
@@ -107,17 +113,33 @@ fn settings_items(login_enabled: Option<bool>) -> Vec<Node> {
     m.push(check("🎵 Dance to Music", settings::dance_to_music(), Command::ToggleMusic));
     m.push(check("✨ Seasonal Touches", settings::seasonal(), Command::ToggleSeasonal));
     m.push(Node::Sep);
-    if platform::has_calendar() {
-        m.push(check("📅 Calendar Heads-Ups (10, 5, 1 min before)", settings::calendar_heads_ups(), Command::ToggleCalendar));
-    }
+    m.push(sub("📅 Calendar", calendar_items(platform::has_calendar(), settings::calendar_url().is_some())));
     let every = settings::break_every();
     let mut breaks = vec![check("Off", every == 0, Command::BreakEvery(0))];
     breaks.extend(BREAK_EVERY.into_iter().map(|n| check(format!("Every {n} Minutes"), every == n, Command::BreakEvery(n))));
     m.push(sub("🧘 Break Reminders", breaks));
+    let wrap = settings::wrap_up();
+    let mut wraps = vec![check("Off", wrap.is_none(), Command::WrapUp(None))];
+    wraps.extend(WRAP_UP_AT.into_iter().map(|h| check(clock(h), wrap == Some(h), Command::WrapUp(Some(h)))));
+    m.push(sub("🌇 Wrap-Up Reminder", wraps));
     m.push(check("📞 Focus During Calls", settings::focus_in_calls(), Command::ToggleCallFocus));
     m.push(Node::Sep);
     if let Some(on) = login_enabled { m.push(check("Launch at Login", on, Command::ToggleLogin)) }
     m.push(check("Check for Updates", settings::check_updates(), Command::ToggleUpdates));
+    m
+}
+
+/// What pets do with the calendar, and where it comes from: the system's (`system`) and/or an iCal link (`linked`).
+fn calendar_items(system: bool, linked: bool) -> Vec<Node> {
+    let mut m = vec![
+        check("Heads-Ups (10, 5, 1 min before)", settings::calendar_heads_ups(), Command::ToggleCalendar),
+        check("☀️ Morning Agenda", settings::morning_agenda(), Command::ToggleAgenda),
+        check("🎯 Offer Focus in Free Time", settings::focus_offers(), Command::ToggleFocusOffers),
+        check("💧 Back-to-Back Warnings", settings::back_to_back(), Command::ToggleBackToBack),
+        Node::Sep,
+        item(if linked { "🔗 Change Calendar Link…" } else { "🔗 Add Calendar Link…" }, Command::SetCalendarLink),
+    ];
+    if !system && !linked { m.push(note("Add your calendar's private iCal link to turn these on")) }
     m
 }
 

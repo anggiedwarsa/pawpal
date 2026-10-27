@@ -58,6 +58,8 @@ pub struct World {
     pub shy: bool,
     /// The laser pointer toy is on: a red dot at the cursor (see `laser`).
     pub laser: bool,
+    /// What a click on a heads-up asked for, for the app to carry out.
+    pub clicked_action: Option<crate::domain::ClickAction>,
     /// The user put the pets away for a while: they wait in the corner out of sight (with `fullscreen` set too).
     pub tucked: bool,
 }
@@ -121,6 +123,7 @@ impl World {
             shy: false,
             laser: false,
             tucked: false,
+            clicked_action: None,
             below: 0.0,
             dock_start: f64::NEG_INFINITY,
             dock_end: f64::INFINITY,

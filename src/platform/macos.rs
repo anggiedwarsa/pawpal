@@ -581,8 +581,13 @@ pub fn upcoming_events(within: f64) -> Vec<crate::domain::CalendarEvent> {
                 .filter(|e| !e.isAllDay())
                 .map(|e| {
                     let start = e.startDate().timeIntervalSince1970();
+                    let end = e.endDate().timeIntervalSince1970();
                     let id = e.eventIdentifier().map_or_else(String::new, |s| s.to_string());
-                    crate::domain::CalendarEvent { id: format!("{id}@{start}"), title: e.title().to_string(), start }
+                    let url = e.URL().and_then(|u| u.absoluteString()).map(|s| s.to_string()).unwrap_or_default();
+                    let location = e.location().map(|s| s.to_string()).unwrap_or_default();
+                    let notes = e.notes().map(|s| s.to_string()).unwrap_or_default();
+                    let link = crate::engine::workday::meeting_link(&[&url, &location, &notes]);
+                    crate::domain::CalendarEvent { id: format!("{id}@{start}"), title: e.title().to_string(), start, end, link }
                 })
                 .collect()
         }

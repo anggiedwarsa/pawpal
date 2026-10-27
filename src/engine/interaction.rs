@@ -12,7 +12,8 @@ impl World {
     /// A click (or double-click) on a pet that wasn't dragged.
     pub fn clicked(&mut self, p: &mut Pet, clicks: u32) {
         if p.activity == Remind {
-            // Got it: the pet goes back to what it was doing.
+            // Got it: the pet goes back to what it was doing, and whatever it offered happens.
+            if let Some(a) = p.on_click.take() { self.clicked_action = Some(a) }
             self.end_remind(p);
         } else if p.activity == VisitCursor {
             if clicks >= 2 {

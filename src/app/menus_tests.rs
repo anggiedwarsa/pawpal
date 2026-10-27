@@ -79,7 +79,7 @@ fn upcoming_reminders_are_listed_soonest_first_and_cancel_when_chosen() {
 #[test]
 fn settings_are_all_in_one_submenu() {
     let t = titles(&settings_items(Some(true)));
-    for s in ["Size", "Walk Area", "Free Will (auto activities)", "🙈 Avoid My Cursor", "🌙 Bedtime", "🎵 Dance to Music", "✨ Seasonal Touches", "🧘 Break Reminders", "📞 Focus During Calls", "Launch at Login", "Check for Updates"] {
+    for s in ["Size", "Walk Area", "Free Will (auto activities)", "🙈 Avoid My Cursor", "🌙 Bedtime", "🎵 Dance to Music", "✨ Seasonal Touches", "🧘 Break Reminders", "🌇 Wrap-Up Reminder", "📅 Calendar", "📞 Focus During Calls", "Launch at Login", "Check for Updates"] {
         assert!(t.contains(&s.to_string()), "{s} is in Settings");
     }
     assert!(!titles(&settings_items(None)).contains(&"Launch at Login".to_string()), "only where it can be set");
@@ -106,4 +106,16 @@ fn a_pet_with_clips_can_be_shared() {
     assert!(pet_menu(&p).contains(&item("📤 Share Test…", Command::Share("Test".into()))));
     let bare = Pet::new(2, "Ghost".into(), Species::Cat, None);
     assert!(!titles(&pet_menu(&bare)).iter().any(|t| t.starts_with("📤")));
+}
+
+#[test]
+fn the_calendar_menu_asks_for_a_link_where_there_is_no_calendar() {
+    let t = titles(&calendar_items(false, false));
+    assert!(t.contains(&"🔗 Add Calendar Link…".to_string()));
+    assert!(t.contains(&"Add your calendar's private iCal link to turn these on".to_string()));
+    let t = titles(&calendar_items(true, true));
+    assert!(t.contains(&"🔗 Change Calendar Link…".to_string()) && !t.iter().any(|s| s.starts_with("Add your")));
+    for s in ["Heads-Ups (10, 5, 1 min before)", "☀️ Morning Agenda", "🎯 Offer Focus in Free Time", "💧 Back-to-Back Warnings"] {
+        assert!(t.contains(&s.to_string()), "{s}");
+    }
 }

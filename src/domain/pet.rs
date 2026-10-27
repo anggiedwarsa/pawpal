@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{Activity, Species};
+use super::{Activity, ClickAction, Species};
 use crate::data::skin::Skin;
 use crate::support::{Point, Size, Span};
 
@@ -65,6 +65,8 @@ pub struct Pet {
     pub buddy: Option<u64>,
     /// The current activity is a trick it was asked for (see `engine::tricks`).
     pub trick: bool,
+    /// What clicking it does while it's out with a heads-up (join the meeting, start focus).
+    pub on_click: Option<ClickAction>,
     /// What it was doing before going out to give a calendar heads-up.
     pub resume: Option<Resume>,
 

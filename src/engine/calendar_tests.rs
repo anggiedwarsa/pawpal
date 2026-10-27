@@ -1,9 +1,10 @@
 //! Unit tests for engine/calendar.rs.
 
 use super::*;
+use crate::domain::ClickAction;
 use crate::testing::world;
 
-fn event(id: &str, start: f64) -> CalendarEvent { CalendarEvent { id: id.into(), title: "Standup".into(), start } }
+fn event(id: &str, start: f64) -> CalendarEvent { CalendarEvent { id: id.into(), title: "Standup".into(), start, end: start + 1800.0, link: None } }
 
 fn run(w: &mut World, seconds: f64) {
     for _ in 0..(seconds * 30.0).round() as usize { w.with_pet(0, |w, p| w.update(p, 1.0 / 30.0)) }
@@ -115,4 +116,24 @@ fn a_second_heads_up_reuses_the_pet_already_out() {
     w.remind("second");
     assert_eq!(w.pets.iter().filter(|p| p.activity == Remind).count(), 1);
     assert!(w.pets.iter().any(|p| p.bubble.as_deref() == Some("second")));
+}
+
+#[test]
+fn clicking_a_heads_up_that_offers_something_passes_it_on() {
+    let mut w = world(1);
+    w.remind_with("📅 Standup starts in 1 minute! Click me to join 🔗", Some(ClickAction::Join("https://meet.google.com/x".into())));
+    assert_eq!(w.pets[0].on_click, Some(ClickAction::Join("https://meet.google.com/x".into())));
+    w.with_pet(0, |w, p| w.clicked(p, 1));
+    assert_eq!(w.clicked_action, Some(ClickAction::Join("https://meet.google.com/x".into())));
+    assert_eq!(w.pets[0].on_click, None, "it only happens once");
+}
+
+#[test]
+fn a_plain_heads_up_or_a_refreshed_one_offers_nothing_old() {
+    let mut w = world(1);
+    w.remind_with("🎯 Free until noon", Some(ClickAction::FocusUntil(100.0)));
+    w.remind("📅 Standup in 5 minutes");
+    assert_eq!(w.pets[0].on_click, None, "the newer heads-up replaces the offer");
+    w.with_pet(0, |w, p| w.clicked(p, 1));
+    assert_eq!(w.clicked_action, None);
 }

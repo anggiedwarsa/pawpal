@@ -62,6 +62,16 @@ struct Prefs {
     perch_on_windows: bool,
     /// Look for a newer release on GitHub once a day.
     check_updates: bool,
+    /// A private iCal link to read calendar events from, besides (or instead of) the system's calendar.
+    calendar_url: Option<String>,
+    /// A pet tells the day's meetings the first time the user sits down in the morning.
+    morning_agenda: bool,
+    /// A pet offers focus mode when there's a good while free before the next meeting.
+    focus_offers: bool,
+    /// Heads-ups mention when a meeting runs straight into the next.
+    back_to_back: bool,
+    /// When (local hour) a pet suggests wrapping up for the day; none is off.
+    wrap_up: Option<u32>,
     /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
     terminal_cell: Option<(f64, f64)>,
 }
@@ -86,6 +96,11 @@ impl Default for Prefs {
             seasonal: true,
             perch_on_windows: true,
             check_updates: true,
+            calendar_url: None,
+            morning_agenda: true,
+            focus_offers: true,
+            back_to_back: true,
+            wrap_up: None,
             terminal_cell: None,
         }
     }
@@ -171,6 +186,16 @@ pub fn perch_on_windows() -> bool { prefs().perch_on_windows }
 pub fn set_perch_on_windows(v: bool) { update(|p| p.perch_on_windows = v) }
 pub fn check_updates() -> bool { prefs().check_updates }
 pub fn set_check_updates(v: bool) { update(|p| p.check_updates = v) }
+pub fn calendar_url() -> Option<String> { prefs().calendar_url.clone() }
+pub fn set_calendar_url(v: Option<String>) { update(|p| p.calendar_url = v) }
+pub fn morning_agenda() -> bool { prefs().morning_agenda }
+pub fn set_morning_agenda(v: bool) { update(|p| p.morning_agenda = v) }
+pub fn focus_offers() -> bool { prefs().focus_offers }
+pub fn set_focus_offers(v: bool) { update(|p| p.focus_offers = v) }
+pub fn back_to_back() -> bool { prefs().back_to_back }
+pub fn set_back_to_back(v: bool) { update(|p| p.back_to_back = v) }
+pub fn wrap_up() -> Option<u32> { prefs().wrap_up }
+pub fn set_wrap_up(v: Option<u32>) { update(|p| p.wrap_up = v) }
 pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
 pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 

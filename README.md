@@ -16,7 +16,11 @@ chases balls and butterflies, eats from its bowl and keeps you company while you
 - **Perches on your windows**: now and then a pet hops up onto the top edge of the window you're using and strolls or naps along it. Move the window and it rides along; close it, resize it or switch to another window and it jumps back down. Turn it off with 🪟 Perch on Windows under ⚙️ Settings.
 - **Bedtime in the corner**: a sleepy pet (or one sent to sleep) hops down level by level, walks to the end of the Dock and hops down into the bottom-right corner of the screen to nap. Click it and it mumbles "What's up? I'm so sleepy… 😴"; double-click wakes it for 30 seconds before it goes back to bed.
 - **Movie mode**: when a video or app goes full screen, pets duck down and peek from the bottom-right corner with just the top of their face showing, then come back out afterwards.
-- **Calendar heads-ups**: 10, 5 and 1 minute before an event, a pet walks out, jumps to the middle of the screen and tells you what's coming up for 30 seconds. Click it (or wait) and it jumps back to the same spot and height and carries on with what it was doing. Turn it off under ⚙️ Settings.
+- **Calendar heads-ups**: 10, 5 and 1 minute before an event, a pet walks out, jumps to the middle of the screen and tells you what's coming up for 30 seconds. Click it (or wait) and it jumps back to the same spot and height and carries on with what it was doing. At the 1-minute heads-up for a meeting with a Zoom, Meet, Teams or Webex link, it says "Click me to join 🔗" and clicking it opens the call. When one meeting runs straight into the next, the heads-up says so ("grab water now 💧"). Settings are under ⚙️ Settings → 📅 Calendar.
+- **Any calendar, on any system**: on a Mac, events come from the Calendar app's accounts. On Windows and Linux (or for a calendar not on your Mac), paste its private iCal link under ⚙️ Settings → 📅 Calendar → 🔗 Add Calendar Link… (Google Calendar: Settings → your calendar → Secret address in iCal format; Outlook: Settings → Calendar → Shared calendars → Publish). Repeating meetings, skipped and moved repeats and time zones are understood; it's downloaded again every 10 minutes.
+- **Morning agenda**: the first time you're at the computer each morning, a pet tells you how many meetings you have today and which is first.
+- **Focus in free time**: when you're free and the next meeting is 50 minutes or more away, a pet offers a focus session. Click it and focus mode runs until 5 minutes before the meeting (90 minutes at most).
+- **Wrap-up**: pick a time (5, 6 or 7 PM) under ⚙️ Settings → 🌇 Wrap-Up Reminder and a pet tells you to wrap up, with the day's meetings and focus time. Still working well past bedtime? A pet suggests calling it a night.
 - **Low battery heads-ups**: on a laptop running on battery, a pet comes out at 10% and again at 5% to ask you to plug in.
 - **Your own reminders**: tray menu → ⏰ Remind Me…, type what and when ("20 min", "1h 30m", "3:30 pm", up to a day ahead), and a pet comes out to tell you, the same way as for a calendar event. They survive a restart; cancel one from ⏰ Upcoming Reminders. Works on every platform.
 - **Break nudges**: after 50 minutes at the computer (or 25 or 90, or off, under ⚙️ Settings → 🧘 Break Reminders), a pet comes to the middle of the screen and suggests a stretch, some water or a breath away from the screen. Five minutes without touching the keyboard or mouse counts as a break, and nudges wait while something plays full screen.
@@ -44,7 +48,7 @@ chases balls and butterflies, eats from its bowl and keeps you company while you
 | Avoids typing | exact caret (Accessibility) | exact caret in Win32 apps, else front window | front window |
 | Right-click pet menu | ✅ | ✅ | via the tray menu |
 | Background removal | edge flood-fill | edge flood-fill | edge flood-fill |
-| Calendar heads-ups | Calendar app accounts (asks for access once) | — | — |
+| Calendar heads-ups | Calendar app accounts (asks for access once), or an iCal link | iCal link | iCal link |
 | Full-screen detection | a front-app window covers the screen | foreground window covers its monitor | `_NET_WM_STATE_FULLSCREEN` |
 
 On Wayland sessions PawPal runs through XWayland, because Wayland doesn't let apps place their windows.

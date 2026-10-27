@@ -15,6 +15,7 @@ mod props_physics;
 pub mod rhythm;
 pub mod seasons;
 pub mod tricks;
+pub mod workday;
 mod world;
 
 pub use behavior::picked_up_line;

@@ -1,7 +1,5 @@
 //! Finding out whether a newer PawPal is out, from the project's latest GitHub release.
 
-use std::process::Command;
-
 /// Where releases are published, and the page the About box links to.
 pub const WEBSITE: &str = "https://github.com/anggiedwarsa/pawpal";
 const LATEST: &str = "https://api.github.com/repos/anggiedwarsa/pawpal/releases/latest";
@@ -37,19 +35,9 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
     false
 }
 
-/// Asks GitHub for the latest release, with the system's curl so PawPal needs no TLS library of its own.
-/// Slow (it goes over the network), so it's run off the main thread; None when offline or curl is missing.
+/// Asks GitHub for the latest release. Slow, so it's run off the main thread; None when offline.
 pub fn fetch_latest() -> Option<Release> {
-    let mut cmd = Command::new("curl");
-    cmd.args(["-fsSL", "--max-time", "15", "-H", "Accept: application/vnd.github+json", "-A", "PawPal", LATEST]);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flashing up
-    }
-    let out = cmd.output().ok()?;
-    if !out.status.success() { return None }
-    parse_latest(&String::from_utf8_lossy(&out.stdout))
+    parse_latest(&super::web::get(LATEST, &["Accept: application/vnd.github+json"])?)
 }
 
 /// The newer release, if the latest one is newer than this build.

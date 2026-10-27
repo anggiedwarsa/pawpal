@@ -4,6 +4,7 @@
 mod import_flow;
 mod menus;
 mod pointer;
+mod workday;
 
 use std::collections::{BTreeMap, HashMap};
 use std::num::NonZeroU32;
@@ -37,7 +38,6 @@ use crate::domain::{Pet, Species};
 use crate::engine::alarms::{alarm_text, clock_label, parse_when, take_due, Alarm};
 use crate::engine::battery::{battery_text, BatteryWatch};
 use crate::engine::breaks::{nudge_text, BreakTimer};
-use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
 use crate::engine::focus::CallWatch;
 use crate::engine::greet::Presence;
 use crate::engine::laser::LASER_IDLE;
@@ -143,7 +143,7 @@ pub struct App {
     import_rx: Option<Receiver<ImportMsg>>,
     login_enabled: Option<bool>,
     next_id: u64,
-    reminders: Reminders,
+    workday: workday::Workday,
     breaks: BreakTimer,
     presence: Presence,
     /// When focus mode ends (seconds since the epoch).
@@ -215,7 +215,7 @@ pub fn run() {
         update_checked: false,
         update_rx: None,
         next_update_check: 0.0,
-        reminders: Reminders::default(),
+        workday: workday::Workday::default(),
         breaks: BreakTimer::default(),
         presence: Presence::default(),
         focus_until: None,
@@ -427,9 +427,11 @@ impl App {
                 self.build_tray();
             }
             self.check_for_updates();
+            self.poll_calendar_feed();
         }
         self.poll_import();
         self.handle_menu_events(el);
+        if let Some(a) = self.world.clicked_action.take() { self.clicked_action(a) }
         if every(10) { self.watch_typing(every(30)) }
         if every(90) { self.watch_calls() }
         if every(60) { self.listen() }
@@ -536,20 +538,10 @@ impl App {
         }
     }
 
-    /// Every few seconds: sends a pet out if a calendar event starts in 10, 5 or 1 minutes.
-    fn check_calendar(&mut self) {
-        if !settings::calendar_heads_ups() || self.world.pets.is_empty() { return }
-        let soon = REMIND_AT[0] as f64 * 60.0 + 30.0;
-        let events = platform::upcoming_events(soon);
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
-        if let Some((event, minutes)) = self.reminders.due(&events, now) {
-            self.world.remind(&heads_up_text(&event.title, minutes));
-        }
-    }
-
     /// Focus time is up (`finished`) or was ended from the menu.
     fn end_focus(&mut self, finished: bool) {
         (self.focus_until, self.call_focus) = (None, false);
+        self.tally_focus();
         self.world.end_focus(finished);
         // The well-done is the break, so the break count starts again.
         if finished { self.breaks.reset() }
@@ -823,6 +815,7 @@ impl App {
             Command::Focus(n) => {
                 self.focus_until = Some(now_secs() + n as f64 * 60.0);
                 self.call_focus = false;
+                self.workday.focus_started = Some(now_secs());
                 self.world.start_focus(&format!("Shh… focus time 🎯 See you in {n} min"));
                 self.build_tray();
             }
@@ -856,6 +849,11 @@ impl App {
             Command::ToggleAvoidCursor => settings::set_avoid_cursor(!settings::avoid_cursor()),
             Command::ToggleAuto => settings::set_auto(!settings::auto()),
             Command::ToggleCalendar => settings::set_calendar_heads_ups(!settings::calendar_heads_ups()),
+            Command::ToggleAgenda => settings::set_morning_agenda(!settings::morning_agenda()),
+            Command::ToggleFocusOffers => settings::set_focus_offers(!settings::focus_offers()),
+            Command::ToggleBackToBack => settings::set_back_to_back(!settings::back_to_back()),
+            Command::SetCalendarLink => self.set_calendar_link(),
+            Command::WrapUp(h) => settings::set_wrap_up(h),
             Command::BreakEvery(n) => settings::set_break_every(n),
             Command::Bedtime(h) => {
                 settings::set_bedtime(h);
