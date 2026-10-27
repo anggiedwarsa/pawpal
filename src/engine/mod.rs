@@ -4,6 +4,7 @@ mod behavior;
 pub mod alarms;
 pub mod breaks;
 pub mod calendar;
+pub mod greet;
 mod interaction;
 mod props_physics;
 pub mod rhythm;

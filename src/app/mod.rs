@@ -36,6 +36,7 @@ use crate::domain::{Pet, Species};
 use crate::engine::alarms::{alarm_text, clock_label, parse_when, take_due, Alarm};
 use crate::engine::breaks::{nudge_text, BreakTimer};
 use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
+use crate::engine::greet::Presence;
 use crate::engine::{World, TYPING_PAUSE};
 use crate::platform;
 use crate::render::Stage;
@@ -135,6 +136,7 @@ pub struct App {
     next_id: u64,
     reminders: Reminders,
     breaks: BreakTimer,
+    presence: Presence,
     /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
     compact: bool,
     low_since: Option<Instant>,
@@ -176,6 +178,7 @@ pub fn run() {
         low_since: None,
         reminders: Reminders::default(),
         breaks: BreakTimer::default(),
+        presence: Presence::default(),
         logged_typing: false,
         import_rx: None,
         login_enabled: login_item().and_then(|l| l.is_enabled().ok()),
@@ -369,6 +372,7 @@ impl App {
         if every(30) {
             self.build_tray();
             (self.world.hour, self.world.bedtime) = (platform::local_hour(), settings::bedtime());
+            if let Some(away) = self.presence.back(now_secs(), self.world.mouse_still) { self.world.welcome_back(away) }
         }
         self.poll_import();
         self.handle_menu_events(el);

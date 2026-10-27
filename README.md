@@ -18,6 +18,7 @@ chases balls and butterflies, eats from its bowl and keeps you company while you
 - **Calendar heads-ups**: 10, 5 and 1 minute before an event, a pet walks out, jumps to the middle of the screen and tells you what's coming up for 30 seconds. Click it (or wait) and it jumps back to the same spot and height and carries on with what it was doing. Turn it off in the tray menu.
 - **Your own reminders**: tray menu → ⏰ Remind Me…, type what and when ("20 min", "1h 30m", "3:30 pm", up to a day ahead), and a pet comes out to tell you, the same way as for a calendar event. They survive a restart; cancel one from ⏰ Upcoming Reminders. Works on every platform.
 - **Break nudges**: after 50 minutes at the computer (or 25 or 90, or off, in the tray menu), a pet comes to the middle of the screen and suggests a stretch, some water or a breath away from the screen. Five minutes without touching the keyboard or mouse counts as a break, and nudges wait while something plays full screen.
+- **Welcome back**: come back after five minutes or more away from the keyboard and mouse and the nearest pet waves hello. After an hour or more it missed you and does a happy dance.
 - **Keeps out of your way**: while you type, pets sit and watch, and move away from the text you're typing (exactly where the OS reports the caret, otherwise around the front window).
 - **Click-through**: clicks pass to the apps underneath unless the cursor is over a pet or a toy.
 - **Tray menu**: feed, give treats, throw a ball, release a butterfly, pick activities, change size, launch at login.
