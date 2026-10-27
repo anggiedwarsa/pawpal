@@ -33,6 +33,7 @@ use crate::data::settings::{self, PetSave};
 use crate::data::skin::{self, Skin};
 use crate::domain::Activity::*;
 use crate::domain::{Pet, Species};
+use crate::engine::breaks::{nudge_text, BreakTimer};
 use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
 use crate::engine::{World, TYPING_PAUSE};
 use crate::platform;
@@ -132,6 +133,7 @@ pub struct App {
     login_enabled: Option<bool>,
     next_id: u64,
     reminders: Reminders,
+    breaks: BreakTimer,
     /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
     compact: bool,
     low_since: Option<Instant>,
@@ -172,6 +174,7 @@ pub fn run() {
         compact: false,
         low_since: None,
         reminders: Reminders::default(),
+        breaks: BreakTimer::default(),
         logged_typing: false,
         import_rx: None,
         login_enabled: login_item().and_then(|l| l.is_enabled().ok()),
@@ -365,7 +368,10 @@ impl App {
         self.poll_import();
         self.handle_menu_events(el);
         if every(10) { self.watch_typing(every(30)) }
-        if every(150) { self.check_calendar() }
+        if every(150) {
+            self.check_calendar();
+            self.check_breaks();
+        }
 
         let now = Instant::now();
         let dt = (now - self.last_tick).as_secs_f64().min(0.1);
@@ -469,6 +475,17 @@ impl App {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
         if let Some((event, minutes)) = self.reminders.due(&events, now) {
             self.world.remind(&heads_up_text(&event.title, minutes));
+        }
+    }
+
+    /// Every few seconds: sends a pet out to suggest a break after a long while at the computer.
+    /// It waits while a movie is on or another heads-up is out.
+    fn check_breaks(&mut self) {
+        let w = &self.world;
+        let hold = w.pets.is_empty() || w.fullscreen || w.pets.iter().any(|p| p.activity == Remind);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+        if self.breaks.due(now, w.mouse_still, settings::break_every(), hold) {
+            self.world.remind(nudge_text());
         }
     }
 
@@ -631,6 +648,7 @@ impl App {
             Command::ToggleVisit => settings::set_visit_idle_cursor(!settings::visit_idle_cursor()),
             Command::ToggleAuto => settings::set_auto(!settings::auto()),
             Command::ToggleCalendar => settings::set_calendar_heads_ups(!settings::calendar_heads_ups()),
+            Command::BreakEvery(n) => settings::set_break_every(n),
             Command::ToggleLogin => {
                 if let Some(l) = login_item() {
                     let on = l.is_enabled().unwrap_or(false);

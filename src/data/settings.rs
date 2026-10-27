@@ -7,6 +7,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 use serde::{Deserialize, Serialize};
 
 use crate::domain::Species;
+use crate::engine::breaks::DEFAULT_BREAK_EVERY;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -41,6 +42,8 @@ struct Prefs {
     asked_accessibility: Option<String>,
     /// A pet comes out 10, 5 and 1 minute before calendar events.
     calendar_heads_ups: bool,
+    /// Minutes at the computer before a pet suggests a break; 0 is off.
+    break_every: u32,
     /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
     terminal_cell: Option<(f64, f64)>,
 }
@@ -56,6 +59,7 @@ impl Default for Prefs {
             flipped: BTreeSet::new(),
             asked_accessibility: None,
             calendar_heads_ups: true,
+            break_every: DEFAULT_BREAK_EVERY,
             terminal_cell: None,
         }
     }
@@ -123,6 +127,8 @@ pub fn asked_accessibility() -> Option<String> { prefs().asked_accessibility.clo
 pub fn set_asked_accessibility(v: String) { update(|p| p.asked_accessibility = Some(v)) }
 pub fn calendar_heads_ups() -> bool { prefs().calendar_heads_ups }
 pub fn set_calendar_heads_ups(v: bool) { update(|p| p.calendar_heads_ups = v) }
+pub fn break_every() -> u32 { prefs().break_every }
+pub fn set_break_every(v: u32) { update(|p| p.break_every = v) }
 pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
 pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 

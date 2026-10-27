@@ -10,6 +10,7 @@ use crate::data::settings::{self, WalkArea};
 use crate::data::skin::ACTIONS;
 use crate::domain::Activity::{self, *};
 use crate::domain::Pet;
+use crate::engine::breaks::BREAK_EVERY;
 use crate::platform;
 
 /// What a menu item does when chosen.
@@ -34,6 +35,7 @@ pub enum Command {
     ToggleVisit,
     ToggleAuto,
     ToggleCalendar,
+    BreakEvery(u32),
     ToggleLogin,
     Quit,
 }
@@ -157,6 +159,10 @@ impl App {
         if platform::has_calendar() {
             m.push(check("📅 Calendar Heads-Ups (10, 5, 1 min before)", settings::calendar_heads_ups(), Command::ToggleCalendar));
         }
+        let every = settings::break_every();
+        let mut breaks = vec![check("Off", every == 0, Command::BreakEvery(0))];
+        breaks.extend(BREAK_EVERY.into_iter().map(|n| check(format!("Every {n} Minutes"), every == n, Command::BreakEvery(n))));
+        m.push(sub("🧘 Break Reminders", breaks));
         if let Some(on) = self.login_enabled {
             m.push(check("Launch at Login", on, Command::ToggleLogin));
         }
