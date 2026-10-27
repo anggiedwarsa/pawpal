@@ -388,3 +388,22 @@ fn climbing_on_from_the_right_faces_left() {
     assert!(p.climbing && p.leap_to.x < p.leap_from.x);
     assert_eq!(p.facing, -1.0);
 }
+
+#[test]
+fn pets_dance_to_music() {
+    let mut w = world(1);
+    w.music = true;
+    let dances = (0..200).filter(|_| { w.with_pet(0, |w, p| w.choose_next(p)); w.pets[0].activity == Dance }).count();
+    assert!(dances > 50, "dances often with music on: {dances}/200");
+    w.music = false;
+    let dances = (0..200).filter(|_| { w.with_pet(0, |w, p| w.choose_next(p)); w.pets[0].activity == Dance }).count();
+    assert!(dances < 30, "only now and then without: {dances}/200");
+}
+
+#[test]
+fn bedtime_beats_music() {
+    let mut w = world(1);
+    (w.music, w.hour, w.bedtime) = (true, 23.0, Some(22));
+    w.with_pet(0, |w, p| w.choose_next(p));
+    assert_eq!(w.pets[0].activity, Sleep);
+}

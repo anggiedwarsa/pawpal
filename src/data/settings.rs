@@ -52,6 +52,8 @@ struct Prefs {
     alarms: Vec<Alarm>,
     /// Pets go to bed while the user is in a call.
     focus_in_calls: bool,
+    /// Pets like to dance while sound is playing.
+    dance_to_music: bool,
     /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
     terminal_cell: Option<(f64, f64)>,
 }
@@ -71,6 +73,7 @@ impl Default for Prefs {
             bedtime: Some(DEFAULT_BEDTIME),
             alarms: Vec::new(),
             focus_in_calls: true,
+            dance_to_music: true,
             terminal_cell: None,
         }
     }
@@ -146,6 +149,8 @@ pub fn alarms() -> Vec<Alarm> { prefs().alarms.clone() }
 pub fn set_alarms(v: Vec<Alarm>) { update(|p| p.alarms = v) }
 pub fn focus_in_calls() -> bool { prefs().focus_in_calls }
 pub fn set_focus_in_calls(v: bool) { update(|p| p.focus_in_calls = v) }
+pub fn dance_to_music() -> bool { prefs().dance_to_music }
+pub fn set_dance_to_music(v: bool) { update(|p| p.dance_to_music = v) }
 pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
 pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 

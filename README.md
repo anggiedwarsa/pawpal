@@ -20,6 +20,7 @@ chases balls and butterflies, eats from its bowl and keeps you company while you
 - **Break nudges**: after 50 minutes at the computer (or 25 or 90, or off, in the tray menu), a pet comes to the middle of the screen and suggests a stretch, some water or a breath away from the screen. Five minutes without touching the keyboard or mouse counts as a break, and nudges wait while something plays full screen.
 - **Focus mode**: tray menu → 🎯 Focus for 25, 50 or 90 minutes. The pets curl up in bed and leave you be (no break nudges), then wake and one comes to say well done. Calendar heads-ups and your own reminders still come through.
 - **Quiet during calls**: while you're in a call, pets go to bed on their own and wake up when it ends. A call is the mic or camera being on (any app: Meet, Zoom, Teams…) or a Google Meet call open in a browser, which also catches Meet while you're muted. Turn it off with 📞 Focus During Calls in the tray menu.
+- **Dances to music**: while something is playing sound, pets often break into a dance. Turn it off with 🎵 Dance to Music in the tray menu.
 - **Welcome back**: come back after five minutes or more away from the keyboard and mouse and the nearest pet waves hello. After an hour or more it missed you and does a happy dance.
 - **Keeps out of your way**: while you type, pets sit and watch, and move away from the text you're typing (exactly where the OS reports the caret, otherwise around the front window).
 - **Click-through**: clicks pass to the apps underneath unless the cursor is over a pet or a toy.

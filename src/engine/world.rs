@@ -43,6 +43,8 @@ pub struct World {
     pub bedtime: Option<u32>,
     /// Focus mode is on: pets stay in bed (see `focus`).
     pub focusing: bool,
+    /// Music (or any sound) is playing: pets like to dance.
+    pub music: bool,
 }
 
 /// Seconds the cursor must stay still before a pet comes to visit it.
@@ -51,6 +53,8 @@ pub const IDLE_CURSOR_DELAY: f64 = 60.0;
 pub const VISIT_DURATION: f64 = 600.0;
 /// How far the cursor must move (points) for a visiting pet to settle where it is.
 pub const VISIT_FOLLOW_DISTANCE: f64 = 40.0;
+/// How likely free will picks a dance while music plays.
+pub const DANCE_TO_MUSIC: f64 = 0.4;
 /// Seconds pets keep sitting and watching after the user's last key press.
 pub const TYPING_PAUSE: f64 = 10.0;
 /// How far a pet living off the Dock roams either side of where it was put.
@@ -87,6 +91,7 @@ impl World {
             hour: 12.0,
             bedtime: None,
             focusing: false,
+            music: false,
             below: 0.0,
             dock_start: f64::NEG_INFINITY,
             dock_end: f64::INFINITY,

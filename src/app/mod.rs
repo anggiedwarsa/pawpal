@@ -58,6 +58,8 @@ const HIDE_AFTER: u32 = REVEAL_AFTER + 2;
 /// keeps its full-size buffers until it has drawn at the small size, so it draws twice more after that.
 const SHRINK_AFTER_HIDING: u32 = HIDE_AFTER + 3;
 const HANDOFF_DONE: u32 = SHRINK_AFTER_HIDING + 2;
+/// Seconds music still counts as playing after the last sound heard.
+const MUSIC_LINGER: f64 = 10.0;
 
 /// The window with its OpenGL surface and renderer.
 struct Gfx {
@@ -143,6 +145,8 @@ pub struct App {
     /// Focus mode came on by itself for a call, and goes off when it ends.
     call_focus: bool,
     calls: CallWatch,
+    /// When sound was last heard playing (seconds since the epoch).
+    last_sound: f64,
     /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
     compact: bool,
     low_since: Option<Instant>,
@@ -188,6 +192,7 @@ pub fn run() {
         focus_until: None,
         call_focus: false,
         calls: CallWatch::default(),
+        last_sound: f64::NEG_INFINITY,
         logged_typing: false,
         import_rx: None,
         login_enabled: login_item().and_then(|l| l.is_enabled().ok()),
@@ -388,6 +393,7 @@ impl App {
         self.handle_menu_events(el);
         if every(10) { self.watch_typing(every(30)) }
         if every(90) { self.watch_calls() }
+        if every(60) { self.listen() }
         if every(150) {
             self.check_calendar();
             self.check_alarms();
@@ -523,6 +529,14 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// Every couple of seconds: whether music is playing. A call's sound doesn't count, and music counts as
+    /// still playing for a few seconds after the last sound heard, since quiet bars between notes read as silence.
+    fn listen(&mut self) {
+        let now = now_secs();
+        if settings::dance_to_music() && !self.calls.on && platform::audio_playing() { self.last_sound = now }
+        self.world.music = now - self.last_sound < MUSIC_LINGER;
     }
 
     /// Every few seconds: sends a pet out with a reminder the user set, once it's due (one at a time).
@@ -718,6 +732,7 @@ impl App {
                 self.build_tray();
             }
             Command::ToggleCallFocus => settings::set_focus_in_calls(!settings::focus_in_calls()),
+            Command::ToggleMusic => settings::set_dance_to_music(!settings::dance_to_music()),
             Command::EndFocus => self.end_focus(false),
             Command::CancelAlarm(id) => settings::set_alarms(settings::alarms().into_iter().filter(|a| a.id != id).collect()),
             Command::Rename(id) => self.rename(id),

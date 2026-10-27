@@ -32,6 +32,7 @@ pub enum Command {
     Focus(u32),
     EndFocus,
     ToggleCallFocus,
+    ToggleMusic,
     CancelAlarm(u64),
     Rename(u64),
     Flip(String),
@@ -219,6 +220,7 @@ impl App {
         breaks.extend(BREAK_EVERY.into_iter().map(|n| check(format!("Every {n} Minutes"), every == n, Command::BreakEvery(n))));
         m.push(sub("🧘 Break Reminders", breaks));
         m.push(check("📞 Focus During Calls", settings::focus_in_calls(), Command::ToggleCallFocus));
+        m.push(check("🎵 Dance to Music", settings::dance_to_music(), Command::ToggleMusic));
         let bed = settings::bedtime();
         let mut beds = vec![check("Off (no daily rhythm)", bed.is_none(), Command::Bedtime(None))];
         beds.extend(BEDTIMES.into_iter().map(|h| check(clock(h), bed == Some(h), Command::Bedtime(Some(h)))));

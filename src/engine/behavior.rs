@@ -1,7 +1,7 @@
 //! How pets decide what to do and how each activity plays out.
 
 use super::rhythm::{weight, DayPart};
-use super::world::{on_dock, World, VISIT_DURATION, VISIT_FOLLOW_DISTANCE};
+use super::world::{on_dock, World, DANCE_TO_MUSIC, VISIT_DURATION, VISIT_FOLLOW_DISTANCE};
 use crate::data::settings;
 use crate::domain::Activity::{self, *};
 use crate::domain::{Pet, Species};
@@ -167,6 +167,10 @@ impl World {
         if self.day() == DayPart::Night && can(Sleep) {
             if p.activity != Stretch { p.say("*yawn* Bedtime… 🌙", 2.6) }
             return self.start(p, Sleep, false);
+        }
+        if self.music && can(Dance) && chance(DANCE_TO_MUSIC) {
+            if chance(0.3) { p.say(pick(&["♪ I love this song!", "🎶 Dance break!", "♫ Ooh, music!"]), 2.6) }
+            return self.start(p, Dance, false);
         }
         if p.hunger > 70.0 && chance(0.35) {
             p.say(pick(p.species.hungry()), 3.0);
