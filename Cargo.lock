@@ -1997,7 +1997,7 @@ checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "pawpal"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "auto-launch",
  "block2 0.6.2",
