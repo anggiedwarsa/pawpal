@@ -219,29 +219,35 @@ fn device_in_use(device: &str) -> bool {
     open
 }
 
-/// Some top-level window's title is a Google Meet call.
-fn meeting_window_open() -> bool {
+/// The titles of the visible top-level windows.
+fn window_titles() -> Vec<String> {
     use windows_sys::core::BOOL;
     use windows_sys::Win32::Foundation::{HWND, LPARAM};
     use windows_sys::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowTextW, IsWindowVisible};
-    unsafe extern "system" fn look(hwnd: HWND, found: LPARAM) -> BOOL {
+    unsafe extern "system" fn look(hwnd: HWND, titles: LPARAM) -> BOOL {
         if IsWindowVisible(hwnd) == 0 { return 1 }
         let mut buf = [0u16; 256];
         let n = GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32);
-        if n > 0 && super::is_meeting_title(&String::from_utf16_lossy(&buf[..n as usize])) {
-            *(found as *mut bool) = true;
-            return 0;
-        }
+        if n > 0 { (*(titles as *mut Vec<String>)).push(String::from_utf16_lossy(&buf[..n as usize])) }
         1
     }
-    let mut found = false;
-    // SAFETY: `look` only writes to `found`, which outlives the call.
-    unsafe { EnumWindows(Some(look), &mut found as *mut bool as LPARAM) };
-    found
+    let mut titles: Vec<String> = vec![];
+    // SAFETY: `look` only pushes to `titles`, which outlives the call.
+    unsafe { EnumWindows(Some(look), &mut titles as *mut Vec<String> as LPARAM) };
+    titles
 }
 
-/// The user is in a call: the mic or webcam is on, or a Meet call is open (Meet may leave the mic closed while muted).
-pub fn in_call() -> bool { device_in_use("microphone") || device_in_use("webcam") || meeting_window_open() }
+/// Whether the user is in a call (the mic or webcam is on, or a Meet call is open: Meet may leave the mic closed
+/// while muted) and whether they're sharing their screen.
+pub fn call_state() -> super::CallState {
+    super::call_state_from(device_in_use("microphone") || device_in_use("webcam"), &window_titles())
+}
+
+/// Keeps the window out of screenshots and screen sharing (Windows 10 2004 and later).
+pub fn hide_from_capture(window: &Window, hide: bool) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE};
+    if let Some(h) = hwnd(window) { unsafe { SetWindowDisplayAffinity(h, if hide { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE }) }; }
+}
 
 /// Some app is playing sound: the default speakers' peak level right now is above silence.
 pub fn audio_playing() -> bool {

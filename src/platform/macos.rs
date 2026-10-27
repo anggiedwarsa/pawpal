@@ -601,27 +601,36 @@ fn camera_in_use() -> bool {
 /// Browsers (and web apps installed from them) whose window titles show the current tab.
 const BROWSERS: [&str; 6] = ["com.google.Chrome", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "org.chromium.Chromium", "com.apple.Safari"];
 
-/// A browser window is showing a Google Meet call (needs Accessibility to read the titles).
-fn meeting_window_open() -> bool {
-    if !accessibility_trusted() { return false }
-    NSWorkspace::sharedWorkspace().runningApplications().iter().any(|a| {
+/// The titles of browser (and Zoom) windows (needs Accessibility to read them).
+fn call_window_titles() -> Vec<String> {
+    if !accessibility_trusted() { return vec![] }
+    let mut out = vec![];
+    for a in NSWorkspace::sharedWorkspace().runningApplications().iter() {
         let id = a.bundleIdentifier().map(|s| s.to_string()).unwrap_or_default();
-        if !BROWSERS.iter().any(|b| id.starts_with(b)) { return false }
+        if !BROWSERS.iter().any(|b| id.starts_with(b)) && id != "us.zoom.xos" { continue }
         let app = Owned(unsafe { AXUIElementCreateApplication(a.processIdentifier()) });
-        let Some(windows) = app.attr("AXWindows") else { return false };
+        let Some(windows) = app.attr("AXWindows") else { continue };
         let windows: CFArray<CFType> = unsafe { CFArray::wrap_under_get_rule(windows.0 as CFArrayRef) };
-        windows.iter().any(|w| {
-            attr(w.as_CFTypeRef(), "AXTitle").is_some_and(|t| {
-                let is_text = unsafe { CFGetTypeID(t.0) == CFStringGetTypeID() };
-                is_text && super::is_meeting_title(&unsafe { CFString::wrap_under_get_rule(t.0 as CFStringRef) }.to_string())
-            })
-        })
-    })
+        for w in windows.iter() {
+            let Some(t) = attr(w.as_CFTypeRef(), "AXTitle") else { continue };
+            if unsafe { CFGetTypeID(t.0) } != unsafe { CFStringGetTypeID() } { continue }
+            out.push(unsafe { CFString::wrap_under_get_rule(t.0 as CFStringRef) }.to_string());
+        }
+    }
+    out
 }
 
-/// The user is in a call: the mic or a camera is on, or a Meet call is open in a browser (Meet may leave
-/// the mic closed while muted).
-pub fn in_call() -> bool { mic_in_use() || camera_in_use() || meeting_window_open() }
+/// Whether the user is in a call (the mic or a camera is on, or a Meet call is open: Meet may leave the mic closed
+/// while muted) and whether they're sharing their screen.
+pub fn call_state() -> super::CallState { super::call_state_from(mic_in_use() || camera_in_use(), &call_window_titles()) }
+
+/// Keeps the window out of screenshots and screen sharing (some newer capture methods ignore this).
+pub fn hide_from_capture(window: &Window, hide: bool) {
+    let Some(view) = ns_view(window) else { return };
+    let view: &NSView = unsafe { view.cast::<NSView>().as_ref() };
+    let Some(win) = view.window() else { return };
+    win.setSharingType(if hide { objc2_app_kit::NSWindowSharingType::None } else { objc2_app_kit::NSWindowSharingType::ReadOnly });
+}
 
 /// Some app is playing sound.
 pub fn audio_playing() -> bool { audio_busy(b"dOut") }

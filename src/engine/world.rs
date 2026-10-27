@@ -39,6 +39,8 @@ pub struct World {
     pub typing_zone_is_exact: bool,
     /// Something is playing full screen: pets wait in the corner.
     pub fullscreen: bool,
+    /// The screen is being shared: pets wait in the corner out of sight (with `fullscreen` set too).
+    pub sharing: bool,
     /// The local time (hours, 0–24) and bedtime setting, fed in by the app; see `rhythm`.
     pub hour: f64,
     pub bedtime: Option<u32>,
@@ -93,6 +95,7 @@ impl World {
             typing_zone: None,
             typing_zone_is_exact: false,
             fullscreen: false,
+            sharing: false,
             hour: 12.0,
             bedtime: None,
             focusing: false,

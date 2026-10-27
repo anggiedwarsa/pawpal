@@ -117,3 +117,15 @@ fn put_down_past_the_dock_it_stays_in_the_corner() {
     });
     assert_eq!(w.pets[0].floor, -60.0);
 }
+
+#[test]
+fn while_the_screen_is_shared_pets_hide_out_of_sight() {
+    let mut w = world(1);
+    w.sharing = true;
+    w.set_fullscreen(true);
+    for _ in 0..90 { w.with_pet(0, |w, p| w.update(p, 1.0 / 30.0)) }
+    assert_eq!((w.pets[0].activity, w.pets[0].sink), (Hide, 1.0), "not even peeking");
+    w.set_fullscreen(false);
+    w.sharing = false;
+    assert_eq!(w.pets[0].bubble.as_deref(), Some("Done sharing? 🐾"));
+}

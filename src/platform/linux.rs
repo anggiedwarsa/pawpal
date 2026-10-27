@@ -163,22 +163,27 @@ fn alsa_running(kind: char) -> bool {
     })
 }
 
-/// Some window's title is a Google Meet call.
-fn meeting_window_open() -> bool {
+/// The titles of all the window manager's client windows.
+fn window_titles() -> Vec<String> {
     with_x(|x| {
         let (name, utf8) = (atom(x, "_NET_WM_NAME")?, atom(x, "UTF8_STRING")?);
         let windows = x.conn.get_property(false, x.root, atom(x, "_NET_CLIENT_LIST")?, AtomEnum::WINDOW, 0, 1024).ok()?.reply().ok()?;
-        let open = windows.value32()?.any(|w| {
-            let title = x.conn.get_property(false, w, name, utf8, 0, 256).ok().and_then(|c| c.reply().ok());
-            title.is_some_and(|t| super::is_meeting_title(&String::from_utf8_lossy(&t.value)))
-        });
-        Some(open)
+        let titles = windows
+            .value32()?
+            .filter_map(|w| x.conn.get_property(false, w, name, utf8, 0, 256).ok()?.reply().ok())
+            .map(|t| String::from_utf8_lossy(&t.value).into_owned())
+            .collect();
+        Some(titles)
     })
-    .unwrap_or(false)
+    .unwrap_or_default()
 }
 
-/// The user is in a call: the mic is open, or a Meet call is open (Meet may leave the mic closed while muted).
-pub fn in_call() -> bool { alsa_running('c') || meeting_window_open() }
+/// Whether the user is in a call (the mic is open, or a Meet call is open: Meet may leave the mic closed while
+/// muted) and whether they're sharing their screen.
+pub fn call_state() -> super::CallState { super::call_state_from(alsa_running('c'), &window_titles()) }
+
+/// X11 has no way to keep a window out of screen captures; pets hide instead.
+pub fn hide_from_capture(_window: &Window, _hide: bool) {}
 
 /// Some app is playing sound.
 pub fn audio_playing() -> bool { alsa_running('p') }

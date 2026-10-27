@@ -88,7 +88,7 @@ fn the_local_clock_reads_a_time_of_day() {
 
 #[test]
 #[ignore = "prints what the audio devices report, for checking by hand"]
-fn audio_state() { eprintln!("AUDIO ax={} in_call={} playing={} battery={:?} date={:?}", accessibility_trusted(), in_call(), audio_playing(), battery(), local_date()) }
+fn audio_state() { eprintln!("AUDIO ax={} call={:?} playing={} battery={:?} date={:?}", accessibility_trusted(), call_state(), audio_playing(), battery(), local_date()) }
 
 #[test]
 fn meet_calls_are_told_from_meets_home_page() {
@@ -104,4 +104,21 @@ fn meet_calls_are_told_from_meets_home_page() {
 fn the_local_date_is_a_real_date() {
     let (month, day) = local_date();
     assert!((1..=12).contains(&month) && (1..=31).contains(&day), "{month}/{day}");
+}
+
+#[test]
+fn sharing_bars_are_told_from_other_windows() {
+    assert!(is_sharing_title("meet.google.com is sharing your screen."));
+    assert!(is_sharing_title("meet.google.com is sharing a window."));
+    assert!(is_sharing_title("Sharing this tab to meet.google.com"));
+    assert!(!is_sharing_title("Meet - abc-defg-hij"));
+    assert!(!is_sharing_title("How to share your screen - Google Search"));
+}
+
+#[test]
+fn sharing_counts_as_being_in_a_call() {
+    let titles = |t: &[&str]| t.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(read_titles(&titles(&["Inbox", "Meet - abc-defg-hij"])), CallState { in_call: true, sharing: false });
+    assert_eq!(read_titles(&titles(&["meet.google.com is sharing your screen."])).sharing, true);
+    assert_eq!(read_titles(&titles(&["Inbox"])), CallState::default());
 }

@@ -176,6 +176,46 @@ fn local_time() -> (u32, u32, f64) {
     (t.wMonth as u32, t.wDay as u32, t.wHour as f64 + t.wMinute as f64 / 60.0 + t.wSecond as f64 / 3600.0)
 }
 
+/// Whether the user is in a call, and sharing their screen in it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CallState {
+    pub in_call: bool,
+    pub sharing: bool,
+}
+
+/// What window titles say about a call: a Meet call open, and a browser's "… is sharing your screen" bar
+/// (or Zoom's share toolbar) on screen.
+#[allow(dead_code)]
+fn read_titles(titles: &[String]) -> CallState {
+    CallState { in_call: titles.iter().any(|t| is_meeting_title(t)), sharing: titles.iter().any(|t| is_sharing_title(t)) }
+}
+
+/// Whether a window title is a screen-sharing bar or toolbar.
+#[allow(dead_code)]
+pub fn is_sharing_title(title: &str) -> bool {
+    let t = title.to_lowercase();
+    ["is sharing your screen", "is sharing a window", "is sharing this tab", "sharing this tab to", "is sharing your entire screen", "you are screen sharing", "zoom share toolbar"]
+        .iter()
+        .any(|s| t.contains(s))
+}
+
+/// Writes the window titles seen during a call when they change, for checking what a sharing bar is called.
+#[allow(dead_code)]
+fn log_call_titles(titles: &[String]) {
+    thread_local! { static LAST: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) }; }
+    if LAST.with(|l| std::mem::replace(&mut *l.borrow_mut(), titles.to_vec())) == titles { return }
+    if let Some(dir) = crate::data::skin::root().parent() { let _ = std::fs::write(dir.join("call-debug.txt"), titles.join("\n")); }
+}
+
+/// The call state from the devices in use and the window titles.
+#[allow(dead_code)]
+fn call_state_from(devices_on: bool, titles: &[String]) -> CallState {
+    let mut state = read_titles(titles);
+    state.in_call |= devices_on || state.sharing;
+    if state.in_call { log_call_titles(titles) }
+    state
+}
+
 /// Whether a window title is a Google Meet call ("Meet - abc-defg-hij", maybe followed by the browser's name),
 /// not Meet's home page.
 #[allow(dead_code)]

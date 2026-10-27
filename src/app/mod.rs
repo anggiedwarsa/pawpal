@@ -147,6 +147,8 @@ pub struct App {
     /// Focus mode came on by itself for a call, and goes off when it ends.
     call_focus: bool,
     calls: CallWatch,
+    /// The windows are being kept out of screen captures.
+    capture_hidden: bool,
     /// When sound was last heard playing (seconds since the epoch).
     last_sound: f64,
     battery: BatteryWatch,
@@ -195,6 +197,7 @@ pub fn run() {
         focus_until: None,
         call_focus: false,
         calls: CallWatch::default(),
+        capture_hidden: false,
         last_sound: f64::NEG_INFINITY,
         battery: BatteryWatch::default(),
         logged_typing: false,
@@ -519,9 +522,22 @@ impl App {
         self.build_tray();
     }
 
-    /// Every few seconds: pets go to bed when a call starts (unless already focusing) and wake when it ends.
+    /// Every few seconds: pets go to bed when a call starts (unless already focusing) and wake when it ends,
+    /// and hide while the screen is shared. During a call the window is kept out of screen captures too.
     fn watch_calls(&mut self) {
-        let seen = settings::focus_in_calls() && platform::in_call();
+        let state = platform::call_state();
+        if state.in_call != self.capture_hidden {
+            self.capture_hidden = state.in_call;
+            for g in self.gfx.iter().chain(self.spare.iter()) { platform::hide_from_capture(&g.window, state.in_call) }
+        }
+        if state.sharing != self.world.sharing {
+            // Said while still sharing, so the pets know why they hid.
+            if !state.sharing { self.world.set_fullscreen(platform::fullscreen_active()) }
+            self.world.sharing = state.sharing;
+            if state.sharing { self.world.set_fullscreen(true) }
+            self.layout();
+        }
+        let seen = settings::focus_in_calls() && state.in_call;
         match self.calls.update(now_secs(), seen) {
             Some(true) if !self.world.focusing => {
                 self.call_focus = true;
@@ -603,7 +619,7 @@ impl App {
     /// `check_fullscreen` is passed about once a second: listing every window costs more than the rest.
     fn watch_typing(&mut self, check_fullscreen: bool) {
         platform::note_frontmost();
-        let fullscreen = if check_fullscreen { platform::fullscreen_active() } else { self.world.fullscreen };
+        let fullscreen = if check_fullscreen { platform::fullscreen_active() || self.world.sharing } else { self.world.fullscreen };
         if fullscreen != self.world.fullscreen {
             self.world.set_fullscreen(fullscreen);
             self.layout();
