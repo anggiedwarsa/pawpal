@@ -8,6 +8,7 @@ pub mod calendar;
 pub mod focus;
 pub mod greet;
 mod interaction;
+mod perch;
 mod props_physics;
 pub mod rhythm;
 pub mod seasons;

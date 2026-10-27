@@ -58,6 +58,9 @@ pub struct Pet {
     pub leap_k: f64,
     /// Hopping up onto the Dock from the screen bottom beside it, in the middle of whatever it was doing.
     pub climbing: bool,
+    /// The window (stage coordinates) the pet lives on top of, and the one it's hopping up onto.
+    pub perched: Option<crate::support::Rect>,
+    pub perch_pending: Option<crate::support::Rect>,
     /// The current activity is a trick it was asked for (see `engine::tricks`).
     pub trick: bool,
     /// What it was doing before going out to give a calendar heads-up.

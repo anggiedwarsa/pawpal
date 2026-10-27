@@ -88,7 +88,7 @@ fn the_local_clock_reads_a_time_of_day() {
 
 #[test]
 #[ignore = "prints what the audio devices report, for checking by hand"]
-fn audio_state() { eprintln!("AUDIO ax={} call={:?} playing={} battery={:?} date={:?}", accessibility_trusted(), call_state(), audio_playing(), battery(), local_date()) }
+fn audio_state() { eprintln!("AUDIO ax={} call={:?} playing={} battery={:?} date={:?} front={:?}", accessibility_trusted(), call_state(), audio_playing(), battery(), local_date(), front_window_frame()) }
 
 #[test]
 fn meet_calls_are_told_from_meets_home_page() {

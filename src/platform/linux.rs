@@ -91,6 +91,17 @@ fn front_window() -> Option<Front> {
     })
 }
 
+/// The active window (not ours) with its window manager frame (title bar), for pets to perch on.
+pub fn front_window_frame() -> Option<Rect> {
+    let w = front_window()?;
+    let top = with_x(|x| {
+        let win = *cardinals(x, x.root, "_NET_ACTIVE_WINDOW", AtomEnum::WINDOW)?.first()?;
+        cardinals(x, win, "_NET_FRAME_EXTENTS", AtomEnum::CARDINAL).and_then(|v| v.get(2).copied())
+    })
+    .unwrap_or(0) as f64;
+    Some(Rect::new(w.rect.x, w.rect.y - top, w.rect.w, w.rect.h + top))
+}
+
 /// Where the user is typing. X11 has no caret position, so this is always a guess: the front window,
 /// or a terminal's prompt row.
 pub fn typing_spot() -> Option<(Rect, bool)> {

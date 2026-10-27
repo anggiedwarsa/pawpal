@@ -52,6 +52,8 @@ pub struct World {
     pub touch: Option<Touch>,
     pub month: u32,
     pub flurry: Flurry,
+    /// The front window (stage coordinates), fed in by the app, for pets to perch on.
+    pub perch: Option<Rect>,
 }
 
 /// Seconds the cursor must stay still before a pet comes to visit it.
@@ -103,6 +105,7 @@ impl World {
             touch: None,
             month: 1,
             flurry: Flurry::default(),
+            perch: None,
             below: 0.0,
             dock_start: f64::NEG_INFINITY,
             dock_end: f64::INFINITY,
@@ -150,7 +153,10 @@ impl World {
             }
         }
         for i in 0..self.pets.len() {
-            self.with_pet(i, |w, p| w.update(p, dt));
+            self.with_pet(i, |w, p| {
+                w.follow_perch(p);
+                w.update(p, dt);
+            });
         }
         self.seasonal_step(dt);
         self.update_props(dt);
@@ -173,6 +179,9 @@ impl World {
     }
 
     /// Something moves fast enough to look choppy at 20 fps: running, jumping, falling, being dragged, toys flying.
+    /// A pet is on (or hopping onto) a window, so the window should be checked often.
+    pub fn perching(&self) -> bool { self.pets.iter().any(|p| p.perched.is_some() || p.perch_pending.is_some()) }
+
     pub fn is_fast(&self) -> bool {
         !self.balls.is_empty()
             || !self.butterflies.is_empty()

@@ -56,6 +56,8 @@ struct Prefs {
     dance_to_music: bool,
     /// Snow, leaves and such drift down now and then.
     seasonal: bool,
+    /// Pets sometimes hop up onto the front window.
+    perch_on_windows: bool,
     /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
     terminal_cell: Option<(f64, f64)>,
 }
@@ -77,6 +79,7 @@ impl Default for Prefs {
             focus_in_calls: true,
             dance_to_music: true,
             seasonal: true,
+            perch_on_windows: true,
             terminal_cell: None,
         }
     }
@@ -156,6 +159,8 @@ pub fn dance_to_music() -> bool { prefs().dance_to_music }
 pub fn set_dance_to_music(v: bool) { update(|p| p.dance_to_music = v) }
 pub fn seasonal() -> bool { prefs().seasonal }
 pub fn set_seasonal(v: bool) { update(|p| p.seasonal = v) }
+pub fn perch_on_windows() -> bool { prefs().perch_on_windows }
+pub fn set_perch_on_windows(v: bool) { update(|p| p.perch_on_windows = v) }
 pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
 pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 

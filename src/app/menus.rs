@@ -34,6 +34,7 @@ pub enum Command {
     ToggleCallFocus,
     ToggleMusic,
     ToggleSeasonal,
+    TogglePerch,
     CancelAlarm(u64),
     Rename(u64),
     Flip(String),
@@ -88,6 +89,7 @@ fn settings_items(login_enabled: Option<bool>) -> Vec<Node> {
     m.push(Node::Sep);
     m.push(check("Free Will (auto activities)", settings::auto(), Command::ToggleAuto));
     m.push(check("Visit Cursor After 1 Min Idle", settings::visit_idle_cursor(), Command::ToggleVisit));
+    m.push(check("🪟 Perch on Windows", settings::perch_on_windows(), Command::TogglePerch));
     let bed = settings::bedtime();
     let mut beds = vec![check("Off (no daily rhythm)", bed.is_none(), Command::Bedtime(None))];
     beds.extend(BEDTIMES.into_iter().map(|h| check(clock(h), bed == Some(h), Command::Bedtime(Some(h)))));

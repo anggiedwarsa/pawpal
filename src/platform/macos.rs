@@ -310,6 +310,9 @@ fn front_windows() -> Vec<CGRect> {
 
 fn front_window() -> Option<CGRect> { front_windows().into_iter().next() }
 
+/// The front app's front window (not ours), title bar included, for pets to perch on.
+pub fn front_window_frame() -> Option<Rect> { front_windows().into_iter().find(|w| w.w >= 200.0 && w.h >= 100.0).map(physical) }
+
 /// Screen frames in window-list coordinates (top-left origin).
 fn screen_rects() -> Vec<CGRect> {
     let ph = primary_height();

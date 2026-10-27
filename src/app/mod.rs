@@ -60,6 +60,8 @@ const HIDE_AFTER: u32 = REVEAL_AFTER + 2;
 /// keeps its full-size buffers until it has drawn at the small size, so it draws twice more after that.
 const SHRINK_AFTER_HIDING: u32 = HIDE_AFTER + 3;
 const HANDOFF_DONE: u32 = SHRINK_AFTER_HIDING + 2;
+/// How long the front window may be unreadable before perched pets give it up.
+const PERCH_GRACE: Duration = Duration::from_millis(1500);
 /// Seconds music still counts as playing after the last sound heard.
 const MUSIC_LINGER: f64 = 10.0;
 
@@ -152,6 +154,8 @@ pub struct App {
     /// When sound was last heard playing (seconds since the epoch).
     last_sound: f64,
     battery: BatteryWatch,
+    /// When the front window last couldn't be read.
+    perch_lost: Option<Instant>,
     /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
     compact: bool,
     low_since: Option<Instant>,
@@ -200,6 +204,7 @@ pub fn run() {
         capture_hidden: false,
         last_sound: f64::NEG_INFINITY,
         battery: BatteryWatch::default(),
+        perch_lost: None,
         logged_typing: false,
         import_rx: None,
         login_enabled: login_item().and_then(|l| l.is_enabled().ok()),
@@ -402,6 +407,7 @@ impl App {
         if every(90) { self.watch_calls() }
         if every(60) { self.listen() }
         if every(1800) { self.check_battery() }
+        if every(if self.world.perching() { 3 } else { 30 }) { self.watch_perch() }
         if every(150) {
             self.check_calendar();
             self.check_alarms();
@@ -549,6 +555,23 @@ impl App {
                 self.world.tell("Call's over! 🐾");
             }
             _ => {}
+        }
+    }
+
+    /// Where the front window is, for pets to perch on. A moment without one (PawPal itself is in front while a
+    /// pet is clicked) keeps the last one, so perched pets don't drop off.
+    fn watch_perch(&mut self) {
+        let frame = settings::perch_on_windows().then(platform::front_window_frame).flatten();
+        match frame {
+            Some(r) => {
+                self.perch_lost = None;
+                self.world.perch = Some(self.global_to_stage(r));
+            }
+            None => {
+                let lost = *self.perch_lost.get_or_insert_with(Instant::now);
+                let keep = settings::perch_on_windows() && (self.pointer.pressed.is_some() || lost.elapsed() < PERCH_GRACE);
+                if !keep { self.world.perch = None }
+            }
         }
     }
 
@@ -770,6 +793,10 @@ impl App {
             }
             Command::ToggleCallFocus => settings::set_focus_in_calls(!settings::focus_in_calls()),
             Command::ToggleMusic => settings::set_dance_to_music(!settings::dance_to_music()),
+            Command::TogglePerch => {
+                settings::set_perch_on_windows(!settings::perch_on_windows());
+                self.watch_perch();
+            }
             Command::ToggleSeasonal => {
                 settings::set_seasonal(!settings::seasonal());
                 self.read_clock();

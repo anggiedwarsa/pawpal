@@ -1,5 +1,6 @@
 //! How pets decide what to do and how each activity plays out.
 
+use super::perch::PERCH_CHANCE;
 use super::rhythm::{weight, DayPart};
 use super::world::{on_dock, World, DANCE_TO_MUSIC, VISIT_DURATION, VISIT_FOLLOW_DISTANCE};
 use crate::data::settings;
@@ -21,6 +22,7 @@ impl World {
         let a = if p.floor < 0.0 && !self.low_roam() && !matches!(a, Sleep | Hide | Dragged | Jump | Falling | Petted | Hop | Remind) { Hop } else { a };
         if matches!(a, Dragged | Hop | Remind) { p.climbing = false }
         p.resume = None;
+        if a != Hop { p.perch_pending = None }
         p.activity = a;
         p.age = 0.0;
         p.step = 0;
@@ -168,6 +170,7 @@ impl World {
             if p.activity != Stretch { p.say("*yawn* Bedtime… 🌙", 2.6) }
             return self.start(p, Sleep, false);
         }
+        if let Some(spot) = self.perch_spot(p).filter(|_| chance(PERCH_CHANCE)) { return self.perch_on(p, spot) }
         if self.music && can(Dance) && chance(DANCE_TO_MUSIC) {
             if chance(0.3) { p.say(pick(&["♪ I love this song!", "🎶 Dance break!", "♫ Ooh, music!"]), 2.6) }
             return self.start(p, Dance, false);
@@ -546,6 +549,7 @@ impl World {
     /// Jumps in an arc to leap_to, then makes that height home and walks on from there.
     fn hop(&mut self, p: &mut Pet, dt: f64) {
         if self.leap(p, dt) {
+            self.land(p);
             self.start(p, if chance(0.6) && p.supports(Walk) { Walk } else { Idle }, false);
         }
     }

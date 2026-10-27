@@ -104,6 +104,22 @@ fn process_name(pid: u32) -> String {
     path.rsplit('\\').next().unwrap_or("").to_lowercase()
 }
 
+/// The foreground window (not ours, not the desktop, not minimised), for pets to perch on.
+pub fn front_window_frame() -> Option<Rect> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::IsIconic;
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.is_null() || hwnd == unsafe { GetShellWindow() } || unsafe { IsIconic(hwnd) } != 0 { return None }
+    let mut pid = 0;
+    unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    if pid == std::process::id() { return None }
+    let mut class = [0u16; 64];
+    let n = unsafe { GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32) };
+    if matches!(String::from_utf16_lossy(&class[..n.max(0) as usize]).as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd") { return None }
+    let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    if unsafe { GetWindowRect(hwnd, &mut r) } == 0 { return None }
+    Some(rect(r)).filter(|r| r.w >= 200.0 && r.h >= 100.0)
+}
+
 pub fn describe_typing() -> String { format!("caret={:?}", typing_spot()) }
 
 /// Whether the foreground window covers its whole monitor, as a full-screen video or game does.
