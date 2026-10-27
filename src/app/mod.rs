@@ -419,7 +419,10 @@ impl App {
         if every(30) {
             self.build_tray();
             self.read_clock();
-            if let Some(away) = self.presence.back(now_secs(), self.world.mouse_still) { self.world.welcome_back(away) }
+            if let Some(away) = self.presence.back(now_secs(), self.world.mouse_still) {
+                self.world.welcome_back(away);
+                self.tally_break();
+            }
             if self.focus_until.is_some_and(|t| now_secs() >= t) { self.end_focus(true) }
             if self.hide_until.is_some_and(|t| now_secs() >= t) { self.show_pets() }
             if self.world.laser && self.world.mouse_still > LASER_IDLE {
@@ -552,6 +555,7 @@ impl App {
     /// and hide while the screen is shared. During a call the window is kept out of screen captures too.
     fn watch_calls(&mut self) {
         let state = platform::call_state();
+        if state.in_call { self.workday.last_call = now_secs() }
         if state.in_call != self.capture_hidden {
             self.capture_hidden = state.in_call;
             for g in self.gfx.iter().chain(self.spare.iter()) { platform::hide_from_capture(&g.window, state.in_call) }
@@ -812,6 +816,8 @@ impl App {
             Command::HidePets(minutes) => self.hide_pets(minutes),
             Command::ShowPets => self.show_pets(),
             Command::RemindMe => self.remind_me(),
+            Command::JotDown => self.jot_down(),
+            Command::DoneTodo(id) => self.done_todo(id),
             Command::Focus(n) => {
                 self.focus_until = Some(now_secs() + n as f64 * 60.0);
                 self.call_focus = false;
@@ -852,6 +858,8 @@ impl App {
             Command::ToggleAgenda => settings::set_morning_agenda(!settings::morning_agenda()),
             Command::ToggleFocusOffers => settings::set_focus_offers(!settings::focus_offers()),
             Command::ToggleBackToBack => settings::set_back_to_back(!settings::back_to_back()),
+            Command::ToggleLateNudges => settings::set_late_nudges(!settings::late_nudges()),
+            Command::ToggleWeekly => settings::set_weekly_summary(!settings::weekly_summary()),
             Command::SetCalendarLink => self.set_calendar_link(),
             Command::WrapUp(h) => settings::set_wrap_up(h),
             Command::BreakEvery(n) => settings::set_break_every(n),

@@ -201,7 +201,7 @@ pub fn lift_subject(_img: &RgbaImage) -> Option<Option<RgbaImage>> { None }
 
 /// No calendar to read here yet (an iCal feed could be added); no heads-ups.
 pub fn has_calendar() -> bool { false }
-pub fn upcoming_events(_within: f64) -> Vec<crate::domain::CalendarEvent> { Vec::new() }
+pub fn calendar_events(_back: f64, _within: f64) -> Vec<crate::domain::CalendarEvent> { Vec::new() }
 
 /// Whether some app is using the microphone or webcam right now, from the privacy settings' "in use" records:
 /// each app that used the device has a key whose LastUsedTimeStop is 0 while it still has it open.

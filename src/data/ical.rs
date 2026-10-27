@@ -7,7 +7,7 @@ use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use rrule::{RRule, RRuleSet, Tz, Unvalidated};
 
 use crate::domain::CalendarEvent;
-use crate::engine::workday::meeting_link;
+use crate::engine::workday::{meeting_link, meeting_place};
 
 /// How often the calendar is fetched again (seconds).
 pub const REFRESH_EVERY: f64 = 10.0 * 60.0;
@@ -49,13 +49,14 @@ pub fn events_between(ics: &str, from: f64, to: f64) -> Vec<CalendarEvent> {
         let title = prop(b, "SUMMARY").map_or_else(String::new, |p| unescape(&p.2));
         let texts: Vec<String> = ["URL", "LOCATION", "DESCRIPTION", "X-GOOGLE-CONFERENCE"].iter().filter_map(|n| prop(b, n).map(|p| unescape(&p.2))).collect();
         let link = meeting_link(&texts.iter().map(String::as_str).collect::<Vec<_>>());
+        let place = prop(b, "LOCATION").and_then(|p| meeting_place(&unescape(&p.2))).filter(|_| link.is_none());
         let starts = match (prop(b, "RRULE"), prop(b, "RECURRENCE-ID")) {
             (Some(rule), None) => repeats(start, &rule.2, b, from - length, to).into_iter().filter(|t| !moved.contains(&(uid.clone(), *t as i64))).collect(),
             _ => vec![start.timestamp() as f64],
         };
         for s in starts {
             if s + length <= from || s >= to { continue }
-            out.push(CalendarEvent { id: format!("{uid}@{s}"), title: title.clone(), start: s, end: s + length, link: link.clone() });
+            out.push(CalendarEvent { id: format!("{uid}@{s}"), title: title.clone(), start: s, end: s + length, link: link.clone(), place: place.clone() });
         }
     }
     out.sort_by(|a, b| a.start.total_cmp(&b.start));

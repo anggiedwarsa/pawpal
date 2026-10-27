@@ -160,7 +160,7 @@ pub fn lift_subject(_img: &RgbaImage) -> Option<Option<RgbaImage>> { None }
 
 /// No calendar to read here yet (an iCal feed could be added); no heads-ups.
 pub fn has_calendar() -> bool { false }
-pub fn upcoming_events(_within: f64) -> Vec<crate::domain::CalendarEvent> { Vec::new() }
+pub fn calendar_events(_back: f64, _within: f64) -> Vec<crate::domain::CalendarEvent> { Vec::new() }
 
 /// Whether a sound card has a capture ('c') or playback ('p') stream running, from /proc/asound. PulseAudio and
 /// PipeWire keep a device running while any app uses it and suspend it soon after.

@@ -1,11 +1,15 @@
 //! The calendar side of the working day: reading events (from the system calendar and/or an iCal link),
-//! heads-ups with the meeting link, the morning agenda, focus offered in free time, and the wrap-up.
+//! heads-ups with the meeting link or the room to walk to, being late or running over, the morning agenda,
+//! focus offered in free time, to-dos, and the wrap-ups at the end of the day and the week.
 
 use std::collections::HashSet;
 use std::sync::mpsc::{self, Receiver};
 
 use super::{now_secs, App};
-use crate::data::{ical, settings};
+use chrono::Datelike;
+
+use crate::data::settings::{self, DayRecord, Todo};
+use crate::data::ical;
 use crate::domain::{CalendarEvent, ClickAction};
 use crate::domain::Activity::Remind;
 use crate::engine::alarms::clock_label;
@@ -17,6 +21,12 @@ use crate::platform;
 const READ_AHEAD: f64 = 16.0 * 3600.0;
 /// The user counts as at the computer when they've touched the mouse or keyboard this recently (seconds).
 const ACTIVE: f64 = 120.0;
+/// A call seen this recently (seconds) is still going.
+const IN_CALL: f64 = 30.0;
+/// Longest to-do kept (characters).
+const MAX_TODO: usize = 80;
+/// When the weekly summary comes on Fridays if there's no wrap-up time set (local hour).
+const WEEKLY_AT: u32 = 16;
 
 #[derive(Default)]
 pub struct Workday {
@@ -35,10 +45,13 @@ pub struct Workday {
     wrap_day: Option<(u32, u32)>,
     /// When a pet last said it's getting late (seconds since the epoch).
     late_nudge: f64,
-    /// Today's tally for the wrap-up, which day it's for, and the meetings seen under way today.
-    stats: DayStats,
-    stats_day: (u32, u32),
-    meetings: HashSet<String>,
+    /// Today's tally, saved as it changes so the weekly summary survives restarts.
+    today: DayRecord,
+    /// When a call was last seen (seconds since the epoch), whether or not focus during calls is on.
+    pub last_call: f64,
+    /// Meetings already nudged about being late to or running over.
+    told_late: HashSet<String>,
+    told_over: HashSet<String>,
     /// When the focus session that's on began, if it was started by the user (not a call).
     pub focus_started: Option<f64>,
 }
@@ -48,8 +61,9 @@ impl App {
     /// with an event in both the system calendar and the iCal link counted once.
     fn calendar_events(&self, within: f64) -> Vec<CalendarEvent> {
         let now = now_secs();
-        let mut events = platform::upcoming_events(within);
-        let fed = self.workday.feed.iter().filter(|e| e.end > now && e.start < now + within);
+        // Meetings that ended a little while ago are included too, to tell when one runs over.
+        let mut events = platform::calendar_events(workday::OVER_UNTIL, within);
+        let fed = self.workday.feed.iter().filter(|e| e.end > now - workday::OVER_UNTIL && e.start < now + within);
         for e in fed {
             if !events.iter().any(|o| o.title.trim() == e.title.trim() && (o.start - e.start).abs() < 60.0) { events.push(e.clone()) }
         }
@@ -117,20 +131,25 @@ impl App {
     /// Every few seconds: the next calendar heads-up if one is due, otherwise the morning agenda, focus offered
     /// in free time, or the wrap-up, one at a time and only while the user is at the computer.
     pub(super) fn check_calendar(&mut self) {
-        if self.world.pets.is_empty() || (!self.has_calendar() && settings::wrap_up().is_none()) { return }
+        if self.world.pets.is_empty() { return }
         let (now, hour, today) = (now_secs(), platform::local_hour(), platform::local_date());
         let events = self.calendar_events(READ_AHEAD);
-        self.tally(&events, now, today);
+        self.tally(&events, now);
 
         if settings::calendar_heads_ups() {
             if let Some((event, minutes)) = self.workday.reminders.due(&events, now) {
                 let mut text = heads_up_text(&event.title, minutes);
                 // The last heads-up is the time to join; clicking an earlier one only sends the pet home.
                 let join = event.link.clone().filter(|_| minutes <= 1).map(ClickAction::Join);
-                if join.is_some() {
+                if let Some(place) = &event.place {
+                    text = workday::walk_over_text(&text, place, minutes);
+                } else if join.is_some() {
                     text += " Click me to join 🔗";
-                } else if let Some(next) = workday::back_to_back(&events, &event).filter(|_| settings::back_to_back()) {
-                    text += &format!(" Then straight into {}, grab water now 💧", next.title.trim());
+                }
+                if join.is_none() {
+                    if let Some(next) = workday::back_to_back(&events, &event).filter(|_| settings::back_to_back()) {
+                        text += &format!(" Then straight into {}, grab water now 💧", next.title.trim());
+                    }
                 }
                 return self.world.remind_with(&text, join);
             }
@@ -138,11 +157,23 @@ impl App {
 
         let w = &self.world;
         let away = w.mouse_still > ACTIVE && w.since_key > ACTIVE;
-        if away || w.fullscreen || w.focusing || self.calls.on || w.pets.iter().any(|p| p.activity == Remind) { return }
+        let out = w.pets.iter().any(|p| p.activity == Remind);
+        if settings::late_nudges() && !out {
+            let in_call = now - self.workday.last_call < IN_CALL;
+            if let Some(e) = workday::running_late(&events, now, self.workday.last_call).filter(|e| !away && !self.workday.told_late.contains(&e.id)) {
+                self.workday.told_late.insert(e.id.clone());
+                return self.world.remind_with(&workday::late_text(e, now), e.link.clone().map(ClickAction::Join));
+            }
+            if let Some((over, next)) = workday::running_over(&events, now).filter(|(o, _)| in_call && !self.workday.told_over.contains(&o.id)) {
+                self.workday.told_over.insert(over.id.clone());
+                return self.world.remind_with(&workday::over_text(over, next, now), next.and_then(|n| n.link.clone()).map(ClickAction::Join));
+            }
+        }
+        if away || out || w.fullscreen || w.focusing || self.calls.on { return }
 
         if self.has_calendar() && settings::morning_agenda() && (5.0..12.0).contains(&hour) && self.workday.agenda_day != Some(today) {
             self.workday.agenda_day = Some(today);
-            return self.world.remind(&workday::agenda_text(&events, now, hour));
+            return self.world.remind(&workday::agenda_text(&events, now, hour, settings::todos().len()));
         }
         if self.has_calendar() && settings::focus_offers() && (7.0..20.0).contains(&hour) {
             if let Some(next) = workday::free_gap(&events, now).filter(|n| self.workday.offered_before.as_ref() != Some(&n.id)) {
@@ -150,11 +181,21 @@ impl App {
                 return self.world.remind_with(&workday::focus_offer_text(next, now, hour), Some(ClickAction::FocusUntil(workday::focus_end(next, now))));
             }
         }
+        // On Fridays the week's summary stands in for the day's wrap-up.
+        let date = chrono::Local::now().date_naive();
+        let weekly_at = settings::wrap_up().unwrap_or(WEEKLY_AT) as f64;
+        let friday = date.weekday() == chrono::Weekday::Fri && settings::weekly_summary();
+        let date_text = date.format("%Y-%m-%d").to_string();
+        if friday && (weekly_at..weekly_at + 3.0).contains(&hour) && settings::last_weekly().as_deref() != Some(date_text.as_str()) {
+            settings::set_last_weekly(date_text);
+            self.workday.wrap_day = Some(today);
+            let week = self.this_week(date);
+            return self.world.remind(&workday::week_text(&week));
+        }
         let Some(wrap) = settings::wrap_up() else { return };
         if (wrap as f64..wrap as f64 + 2.0).contains(&hour) && self.workday.wrap_day != Some(today) {
             self.workday.wrap_day = Some(today);
-            let stats = DayStats { meetings: self.workday.meetings.len(), ..self.workday.stats.clone() };
-            return self.world.remind(&workday::wrap_up_text(&stats));
+            return self.world.remind(&workday::wrap_up_text(&stats(&self.workday.today), settings::todos().len()));
         }
         if workday::past_bedtime(hour, self.world.bedtime) && self.world.since_key < 60.0 && now - self.workday.late_nudge > 12.0 * 3600.0 {
             self.workday.late_nudge = now;
@@ -162,14 +203,32 @@ impl App {
         }
     }
 
-    /// Counts today's meetings for the wrap-up, starting afresh each day.
-    fn tally(&mut self, events: &[CalendarEvent], now: f64, today: (u32, u32)) {
-        let wd = &mut self.workday;
-        if wd.stats_day != today {
-            (wd.stats_day, wd.stats) = (today, DayStats::default());
-            wd.meetings.clear();
+    /// Counts today's meetings for the wrap-ups.
+    fn tally(&mut self, events: &[CalendarEvent], now: f64) {
+        let new: Vec<String> = events
+            .iter()
+            .filter(|e| e.start <= now && now < e.end && !self.workday.today.meetings.contains(&e.id))
+            .map(|e| e.id.clone())
+            .collect();
+        if !new.is_empty() { self.update_today(|d| d.meetings.extend(new)) }
+    }
+
+    /// Changes today's tally and saves it, starting a fresh one when the day has changed (or at launch,
+    /// picking up today's from before a restart).
+    fn update_today(&mut self, f: impl FnOnce(&mut DayRecord)) {
+        let date = chrono::Local::now().date_naive().format("%Y-%m-%d").to_string();
+        if self.workday.today.date != date {
+            self.workday.today = settings::days().into_iter().find(|d| d.date == date).unwrap_or(DayRecord { date, ..Default::default() });
         }
-        wd.meetings.extend(events.iter().filter(|e| e.start <= now && now < e.end).map(|e| e.id.clone()));
+        f(&mut self.workday.today);
+        settings::save_day(self.workday.today.clone());
+    }
+
+    /// This week's tallies, Monday to today.
+    fn this_week(&mut self, date: chrono::NaiveDate) -> Vec<DayStats> {
+        self.update_today(|_| {});
+        let monday = (date - chrono::Duration::days(date.weekday().num_days_from_monday() as i64)).format("%Y-%m-%d").to_string();
+        settings::days().iter().filter(|d| d.date >= monday).map(stats).collect()
     }
 
     /// A focus session the user started is over: it counts towards today's tally if it lasted a while.
@@ -177,9 +236,43 @@ impl App {
         let Some(began) = self.workday.focus_started.take() else { return };
         let minutes = (now_secs() - began) / 60.0;
         if minutes >= 5.0 {
-            self.workday.stats.focus_sessions += 1;
-            self.workday.stats.focus_minutes += minutes;
+            self.update_today(|d| {
+                d.focus_sessions += 1;
+                d.focus_minutes += minutes;
+            });
         }
+    }
+
+    /// The user came back after a while away: that was a break.
+    pub(super) fn tally_break(&mut self) { self.update_today(|d| d.breaks += 1) }
+
+    /// "📝 Jot It Down…": adds a to-do.
+    pub(super) fn jot_down(&mut self) {
+        let Some(text) = platform::prompt_text("PawPal", "What do you need to do?", "") else { return };
+        let text: String = text.trim().chars().take(MAX_TODO).collect();
+        if text.is_empty() { return }
+        let mut todos = settings::todos();
+        todos.push(Todo { id: (now_secs() * 1000.0) as u64, text });
+        settings::set_todos(todos);
+        self.world.tell("Got it! I'll keep it on your list 📝");
+        self.build_tray();
+    }
+
+    /// A to-do ticked off in the tray.
+    pub(super) fn done_todo(&mut self, id: u64) {
+        let mut todos = settings::todos();
+        let before = todos.len();
+        todos.retain(|t| t.id != id);
+        if todos.len() == before { return }
+        let left = todos.len();
+        settings::set_todos(todos);
+        self.update_today(|d| d.todos_done += 1);
+        self.world.tell(&match left {
+            0 => "All done! ✅ Nothing left on your list 🎉".to_string(),
+            1 => "Nice! ✅ 1 to-do left".to_string(),
+            n => format!("Nice! ✅ {n} to-dos left"),
+        });
+        self.build_tray();
     }
 
     /// The pet out with a heads-up was clicked, and it offered something.
@@ -196,4 +289,9 @@ impl App {
             }
         }
     }
+}
+
+/// A saved day's tally, as the wrap-ups count it.
+fn stats(d: &DayRecord) -> DayStats {
+    DayStats { meetings: d.meetings.len(), focus_sessions: d.focus_sessions, focus_minutes: d.focus_minutes, breaks: d.breaks, todos_done: d.todos_done }
 }

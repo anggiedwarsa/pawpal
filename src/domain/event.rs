@@ -9,6 +9,8 @@ pub struct CalendarEvent {
     pub end: f64,
     /// The video call to join (Zoom, Meet, Teams…), when the event has one.
     pub link: Option<String>,
+    /// Where it is, for a meeting in person (a room or address rather than a call).
+    pub place: Option<String>,
 }
 
 /// What clicking a pet that's out with a heads-up does, besides sending it home.

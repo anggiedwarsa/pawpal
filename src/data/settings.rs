@@ -19,6 +19,29 @@ pub enum WalkArea {
     Screen,
 }
 
+/// Something the user jotted down to do.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Todo {
+    pub id: u64,
+    pub text: String,
+}
+
+/// What got done one day (local date, `YYYY-MM-DD`), kept for the weekly summary.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct DayRecord {
+    pub date: String,
+    /// Ids of the meetings seen under way, so each counts once even across restarts.
+    pub meetings: Vec<String>,
+    pub focus_sessions: u32,
+    pub focus_minutes: f64,
+    pub breaks: u32,
+    pub todos_done: u32,
+}
+
+/// Days kept for the weekly summary.
+const KEEP_DAYS: usize = 14;
+
 /// A pet as saved between launches.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PetSave {
@@ -72,6 +95,15 @@ struct Prefs {
     back_to_back: bool,
     /// When (local hour) a pet suggests wrapping up for the day; none is off.
     wrap_up: Option<u32>,
+    /// A pet says when the user's late to a meeting or one is running over.
+    late_nudges: bool,
+    /// On Fridays, a pet sums up the week.
+    weekly_summary: bool,
+    /// The date of the last weekly summary, so it comes once.
+    last_weekly: Option<String>,
+    todos: Vec<Todo>,
+    /// The last couple of weeks' tallies, oldest first.
+    days: Vec<DayRecord>,
     /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
     terminal_cell: Option<(f64, f64)>,
 }
@@ -101,6 +133,11 @@ impl Default for Prefs {
             focus_offers: true,
             back_to_back: true,
             wrap_up: None,
+            late_nudges: true,
+            weekly_summary: true,
+            last_weekly: None,
+            todos: Vec::new(),
+            days: Vec::new(),
             terminal_cell: None,
         }
     }
@@ -196,6 +233,25 @@ pub fn back_to_back() -> bool { prefs().back_to_back }
 pub fn set_back_to_back(v: bool) { update(|p| p.back_to_back = v) }
 pub fn wrap_up() -> Option<u32> { prefs().wrap_up }
 pub fn set_wrap_up(v: Option<u32>) { update(|p| p.wrap_up = v) }
+pub fn late_nudges() -> bool { prefs().late_nudges }
+pub fn set_late_nudges(v: bool) { update(|p| p.late_nudges = v) }
+pub fn weekly_summary() -> bool { prefs().weekly_summary }
+pub fn set_weekly_summary(v: bool) { update(|p| p.weekly_summary = v) }
+pub fn last_weekly() -> Option<String> { prefs().last_weekly.clone() }
+pub fn set_last_weekly(v: String) { update(|p| p.last_weekly = Some(v)) }
+pub fn todos() -> Vec<Todo> { prefs().todos.clone() }
+pub fn set_todos(v: Vec<Todo>) { update(|p| p.todos = v) }
+pub fn days() -> Vec<DayRecord> { prefs().days.clone() }
+/// Saves one day's tally, replacing that day's earlier one and forgetting days older than two weeks.
+pub fn save_day(day: DayRecord) {
+    update(|p| {
+        p.days.retain(|d| d.date != day.date);
+        p.days.push(day);
+        p.days.sort_by(|a, b| a.date.cmp(&b.date));
+        let extra = p.days.len().saturating_sub(KEEP_DAYS);
+        p.days.drain(..extra);
+    })
+}
 pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
 pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 

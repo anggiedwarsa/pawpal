@@ -4,7 +4,7 @@ use super::*;
 use crate::domain::ClickAction;
 use crate::testing::world;
 
-fn event(id: &str, start: f64) -> CalendarEvent { CalendarEvent { id: id.into(), title: "Standup".into(), start, end: start + 1800.0, link: None } }
+fn event(id: &str, start: f64) -> CalendarEvent { CalendarEvent { id: id.into(), title: "Standup".into(), start, end: start + 1800.0, link: None, place: None } }
 
 fn run(w: &mut World, seconds: f64) {
     for _ in 0..(seconds * 30.0).round() as usize { w.with_pet(0, |w, p| w.update(p, 1.0 / 30.0)) }

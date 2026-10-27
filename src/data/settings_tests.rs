@@ -11,6 +11,7 @@ fn missing_keys_take_defaults() {
     assert!(p.check_updates, "updates are looked for unless turned off");
     assert!(p.morning_agenda && p.focus_offers && p.back_to_back && p.calendar_url.is_none());
     assert_eq!(p.wrap_up, None, "no wrap-up unless a time is picked");
+    assert!(p.late_nudges && p.weekly_summary && p.todos.is_empty() && p.days.is_empty());
 }
 
 #[test]
@@ -40,4 +41,21 @@ fn settings_save_to_a_test_file() {
 #[test]
 fn scale_falls_back_when_unset() {
     assert!(scale() > 0.0);
+}
+
+#[test]
+fn day_tallies_replace_the_same_day_and_keep_two_weeks() {
+    for d in 1..=20 { save_day(DayRecord { date: format!("2026-10-{d:02}"), breaks: d, ..Default::default() }) }
+    save_day(DayRecord { date: "2026-10-20".into(), breaks: 99, ..Default::default() });
+    let days = days();
+    assert_eq!(days.len(), KEEP_DAYS);
+    assert_eq!(days.first().map(|d| d.date.as_str()), Some("2026-10-07"), "the oldest are forgotten");
+    assert_eq!(days.last().map(|d| (d.date.as_str(), d.breaks)), Some(("2026-10-20", 99)), "a day is saved once, latest wins");
+}
+
+#[test]
+fn todos_are_saved() {
+    set_todos(vec![Todo { id: 1, text: "Send invoice".into() }]);
+    assert_eq!(todos(), vec![Todo { id: 1, text: "Send invoice".into() }]);
+    set_todos(Vec::new());
 }

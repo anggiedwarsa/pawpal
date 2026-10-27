@@ -79,7 +79,7 @@ fn upcoming_reminders_are_listed_soonest_first_and_cancel_when_chosen() {
 #[test]
 fn settings_are_all_in_one_submenu() {
     let t = titles(&settings_items(Some(true)));
-    for s in ["Size", "Walk Area", "Free Will (auto activities)", "🙈 Avoid My Cursor", "🌙 Bedtime", "🎵 Dance to Music", "✨ Seasonal Touches", "🧘 Break Reminders", "🌇 Wrap-Up Reminder", "📅 Calendar", "📞 Focus During Calls", "Launch at Login", "Check for Updates"] {
+    for s in ["Size", "Walk Area", "Free Will (auto activities)", "🙈 Avoid My Cursor", "🌙 Bedtime", "🎵 Dance to Music", "✨ Seasonal Touches", "🧘 Break Reminders", "🌇 Wrap-Up Reminder", "📊 Weekly Summary on Fridays", "📅 Calendar", "📞 Focus During Calls", "Launch at Login", "Check for Updates"] {
         assert!(t.contains(&s.to_string()), "{s} is in Settings");
     }
     assert!(!titles(&settings_items(None)).contains(&"Launch at Login".to_string()), "only where it can be set");
@@ -115,7 +115,20 @@ fn the_calendar_menu_asks_for_a_link_where_there_is_no_calendar() {
     assert!(t.contains(&"Add your calendar's private iCal link to turn these on".to_string()));
     let t = titles(&calendar_items(true, true));
     assert!(t.contains(&"🔗 Change Calendar Link…".to_string()) && !t.iter().any(|s| s.starts_with("Add your")));
-    for s in ["Heads-Ups (10, 5, 1 min before)", "☀️ Morning Agenda", "🎯 Offer Focus in Free Time", "💧 Back-to-Back Warnings"] {
+    for s in ["Heads-Ups (10, 5, 1 min before)", "☀️ Morning Agenda", "🎯 Offer Focus in Free Time", "💧 Back-to-Back Warnings", "⏰ Late & Over-Time Nudges"] {
         assert!(t.contains(&s.to_string()), "{s}");
     }
+}
+
+#[test]
+fn todos_are_listed_and_tick_off_when_chosen() {
+    let todos = [Todo { id: 7, text: "Send invoice".into() }, Todo { id: 8, text: "Book flights".into() }];
+    assert_eq!(
+        todo_items(&todos),
+        vec![
+            note("Choose one to tick it off"),
+            check("Send invoice", false, Command::DoneTodo(7)),
+            check("Book flights", false, Command::DoneTodo(8)),
+        ]
+    );
 }

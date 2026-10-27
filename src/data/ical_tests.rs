@@ -75,3 +75,13 @@ fn durations_and_links() {
     assert!(!looks_like_link("calendar.google.com"));
     assert!(!looks_like_link("https://a b"));
 }
+
+#[test]
+fn an_in_person_meeting_keeps_its_room() {
+    let ics = "BEGIN:VEVENT\nUID:r\nDTSTART:20261027T090000Z\nDTEND:20261027T100000Z\nSUMMARY:Review\nLOCATION:Room 4B\\, 3rd floor\nEND:VEVENT\n\
+BEGIN:VEVENT\nUID:t\nDTSTART:20261027T110000Z\nDTEND:20261027T120000Z\nSUMMARY:Sync\nLOCATION:Microsoft Teams Meeting\nDESCRIPTION:https://teams.microsoft.com/l/meetup-join/1\nEND:VEVENT";
+    let e = events_between(ics, at(2026, 10, 27, 0, 0), at(2026, 10, 28, 0, 0));
+    assert_eq!((e[0].place.as_deref(), e[0].link.as_deref()), (Some("Room 4B, 3rd floor"), None));
+    assert_eq!(e[1].place, None, "a call's placeholder location isn't a room");
+    assert!(e[1].link.is_some());
+}

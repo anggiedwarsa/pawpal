@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use tray_icon::menu::{CheckMenuItem, IsMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 
 use super::App;
-use crate::data::settings::{self, WalkArea};
+use crate::data::settings::{self, Todo, WalkArea};
 use crate::data::skin::ACTIONS;
 use crate::domain::Activity::{self, *};
 use crate::domain::Pet;
@@ -33,6 +33,8 @@ pub enum Command {
     HidePets(Option<u32>),
     ShowPets,
     RemindMe,
+    JotDown,
+    DoneTodo(u64),
     Focus(u32),
     EndFocus,
     ToggleCallFocus,
@@ -58,6 +60,8 @@ pub enum Command {
     ToggleAgenda,
     ToggleFocusOffers,
     ToggleBackToBack,
+    ToggleLateNudges,
+    ToggleWeekly,
     SetCalendarLink,
     WrapUp(Option<u32>),
     BreakEvery(u32),
@@ -122,6 +126,7 @@ fn settings_items(login_enabled: Option<bool>) -> Vec<Node> {
     let mut wraps = vec![check("Off", wrap.is_none(), Command::WrapUp(None))];
     wraps.extend(WRAP_UP_AT.into_iter().map(|h| check(clock(h), wrap == Some(h), Command::WrapUp(Some(h)))));
     m.push(sub("🌇 Wrap-Up Reminder", wraps));
+    m.push(check("📊 Weekly Summary on Fridays", settings::weekly_summary(), Command::ToggleWeekly));
     m.push(check("📞 Focus During Calls", settings::focus_in_calls(), Command::ToggleCallFocus));
     m.push(Node::Sep);
     if let Some(on) = login_enabled { m.push(check("Launch at Login", on, Command::ToggleLogin)) }
@@ -136,6 +141,7 @@ fn calendar_items(system: bool, linked: bool) -> Vec<Node> {
         check("☀️ Morning Agenda", settings::morning_agenda(), Command::ToggleAgenda),
         check("🎯 Offer Focus in Free Time", settings::focus_offers(), Command::ToggleFocusOffers),
         check("💧 Back-to-Back Warnings", settings::back_to_back(), Command::ToggleBackToBack),
+        check("⏰ Late & Over-Time Nudges", settings::late_nudges(), Command::ToggleLateNudges),
         Node::Sep,
         item(if linked { "🔗 Change Calendar Link…" } else { "🔗 Add Calendar Link…" }, Command::SetCalendarLink),
     ];
@@ -162,6 +168,13 @@ fn alarm_items(mut alarms: Vec<Alarm>, now: f64, hour: f64) -> Vec<Node> {
     alarms.sort_by(|a, b| a.at.total_cmp(&b.at));
     let mut m = vec![note("Choose one to cancel it")];
     m.extend(alarms.iter().map(|a| item(format!("✖ {} — {}", clock_label(a.at, now, hour), a.text.trim()), Command::CancelAlarm(a.id))));
+    m
+}
+
+/// The to-do list; choosing one ticks it off.
+fn todo_items(todos: &[Todo]) -> Vec<Node> {
+    let mut m = vec![note("Choose one to tick it off")];
+    m.extend(todos.iter().map(|t| check(t.text.clone(), false, Command::DoneTodo(t.id))));
     m
 }
 
@@ -257,6 +270,9 @@ impl App {
             m.push(hide_items(self.world.tucked, self.hotkey_label()));
             m.push(Node::Sep);
             m.push(item("⏰ Remind Me…", Command::RemindMe));
+            m.push(item("📝 Jot It Down…", Command::JotDown));
+            let todos = settings::todos();
+            if !todos.is_empty() { m.push(sub(format!("📝 To-Dos ({})", todos.len()), todo_items(&todos))) }
             match self.focus_until {
                 Some(until) => {
                     let left = ((until - super::now_secs()) / 60.0).ceil().max(1.0);

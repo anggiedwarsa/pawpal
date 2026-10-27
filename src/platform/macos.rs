@@ -549,9 +549,9 @@ fn can_ask_for_calendar() -> bool {
         .is_some()
 }
 
-/// Events starting in the next `within` seconds. The first call asks for calendar access; until it's
-/// granted (or if it's refused) there are none.
-pub fn upcoming_events(within: f64) -> Vec<crate::domain::CalendarEvent> {
+/// Events overlapping the stretch from `back` seconds ago to `within` seconds from now. The first call asks
+/// for calendar access; until it's granted (or if it's refused) there are none.
+pub fn calendar_events(back: f64, within: f64) -> Vec<crate::domain::CalendarEvent> {
     use objc2_event_kit::{EKAuthorizationStatus, EKEntityType, EKEventStore};
     use objc2_foundation::{NSDate, NSObjectProtocol};
     EVENTS.with(|cell| {
@@ -573,7 +573,7 @@ pub fn upcoming_events(within: f64) -> Vec<crate::domain::CalendarEvent> {
         }
         if status != EKAuthorizationStatus::FullAccess { return vec![] }
         unsafe {
-            let (from, to) = (NSDate::now(), NSDate::dateWithTimeIntervalSinceNow(within));
+            let (from, to) = (NSDate::dateWithTimeIntervalSinceNow(-back), NSDate::dateWithTimeIntervalSinceNow(within));
             let query = store.predicateForEventsWithStartDate_endDate_calendars(&from, &to, None);
             store
                 .eventsMatchingPredicate(&query)
@@ -587,7 +587,8 @@ pub fn upcoming_events(within: f64) -> Vec<crate::domain::CalendarEvent> {
                     let location = e.location().map(|s| s.to_string()).unwrap_or_default();
                     let notes = e.notes().map(|s| s.to_string()).unwrap_or_default();
                     let link = crate::engine::workday::meeting_link(&[&url, &location, &notes]);
-                    crate::domain::CalendarEvent { id: format!("{id}@{start}"), title: e.title().to_string(), start, end, link }
+                    let place = crate::engine::workday::meeting_place(&location).filter(|_| link.is_none());
+                    crate::domain::CalendarEvent { id: format!("{id}@{start}"), title: e.title().to_string(), start, end, link, place }
                 })
                 .collect()
         }
