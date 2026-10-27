@@ -2,7 +2,7 @@
 
 use femtovg::{Color, LineCap, Paint, Path};
 
-use super::Stage;
+use super::stage::{Img, Stage};
 use crate::domain::{Ball, Bowl, Butterfly};
 use crate::engine::World;
 use crate::support::*;
@@ -72,8 +72,10 @@ impl Stage {
         self.canvas.restore();
     }
 
+    pub(super) fn bubble_image(&mut self, text: &str) -> Option<Img> { self.text_image(text, 12.0, 600, Rgba::hex(0x333333)) }
+
     pub(super) fn draw_bubble(&mut self, text: &str, at: Point) {
-        let Some(img) = self.text_image(text, 12.0, 600, Rgba::hex(0x333333)) else { return };
+        let Some(img) = self.bubble_image(text) else { return };
         let (w, h) = (img.w + 16.0, img.h + 8.0);
         let x = clamp(at.x - w / 2.0, 4.0, self.width - w - 4.0);
         let r = Rect::new(x, at.y, w, h);

@@ -66,6 +66,8 @@ pub struct App {
     window_cursor: Option<Point>,
     /// Where the window is, in physical pixels (top-left origin).
     window_px: Rect,
+    /// A new `window_px` the window is moved to just before the next frame is drawn (see `draw`).
+    pending_frame: Option<Rect>,
     hittest: bool,
     frame_count: u64,
     next_frame: Instant,
@@ -104,6 +106,7 @@ pub fn run() {
         pointer: Pointer::default(),
         window_cursor: None,
         window_px: Rect::default(),
+        pending_frame: None,
         hittest: true,
         frame_count: 0,
         next_frame: Instant::now(),
@@ -314,8 +317,14 @@ impl App {
 
     fn draw(&mut self, dt: f64) {
         let Some(g) = &mut self.gfx else { return };
+        // The slow part (decoding a clip that starts playing, rasterising a bubble) goes first, and the window
+        // is moved or resized only after it: until the new picture is up, macOS shows the old one stretched to
+        // the new size (pets look bigger), so the two must follow each other as closely as possible.
+        g.stage.prepare(&mut self.world, dt);
+        self.apply_frame();
+        let Some(g) = &mut self.gfx else { return };
         // Nothing changed on screen: skip drawing and presenting altogether.
-        if g.stage.render(&mut self.world, dt) {
+        if g.stage.render(&self.world) {
             let _ = g.surface.swap_buffers(&g.context);
         }
     }
@@ -419,14 +428,7 @@ impl App {
         let frame = Rect::new(shelf.screen.x, top, shelf.screen.w, bottom - top);
         if frame != self.window_px {
             self.window_px = frame;
-            let size = PhysicalSize::new(frame.w.round() as u32, frame.h.round() as u32);
-            if !platform::set_frame(&g.window, frame) {
-                g.window.set_outer_position(PhysicalPosition::new(frame.x.round() as i32, frame.y.round() as i32));
-                let _ = g.window.request_inner_size(size);
-            }
-            // Size the drawing to the new window now: macOS reports the resize only later, and a frame
-            // drawn at the old size gets stretched to fit (pets look bigger, or ghost above themselves).
-            self.resize(size);
+            self.pending_frame = Some(frame);
         }
         let w = &mut self.world;
         w.ground = ground;
@@ -444,6 +446,20 @@ impl App {
             w.with_pet(i, |w, p| if p.activity != VisitCursor { p.x = w.clamp_x(p, p.x, 20.0) });
         }
         if let Some(g) = &self.gfx { g.window.request_redraw() }
+    }
+
+    /// Moves the window to where `layout` wants it; called by `draw` right before drawing.
+    fn apply_frame(&mut self) {
+        let Some(frame) = self.pending_frame.take() else { return };
+        let Some(g) = &self.gfx else { return };
+        let size = PhysicalSize::new(frame.w.round() as u32, frame.h.round() as u32);
+        if !platform::set_frame(&g.window, frame) {
+            g.window.set_outer_position(PhysicalPosition::new(frame.x.round() as i32, frame.y.round() as i32));
+            let _ = g.window.request_inner_size(size);
+        }
+        // Size the drawing to the new window now: macOS reports the resize only later, and a frame
+        // drawn at the old size gets stretched to fit (pets look bigger, or ghost above themselves).
+        self.resize(size);
     }
 
     // Tray and menus

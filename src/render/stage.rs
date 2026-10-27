@@ -61,6 +61,8 @@ pub struct Stage {
     pub height: f64,
     /// What the last drawn frame showed; an identical frame isn't drawn again.
     last_scene: String,
+    /// The pets as `prepare` left them, for the next `render`.
+    prepared: Vec<PetDraw>,
 }
 
 impl Stage {
@@ -77,6 +79,7 @@ impl Stage {
             width: 1.0,
             height: 1.0,
             last_scene: String::new(),
+            prepared: Vec::new(),
         }
     }
 
@@ -106,9 +109,9 @@ impl Stage {
         self.recent.clear();
     }
 
-    /// Animates every pet's clip (updating its size and reach), then draws the frame.
-    /// Returns false, drawing nothing, when the frame would look exactly like the last one.
-    pub fn render(&mut self, world: &mut World, dt: f64) -> bool {
+    /// Animates every pet's clip (updating its size and reach) and gets ready everything the next `render`
+    /// needs: decoding a clip's frames and rasterising text are the slow part of a frame, and are done here.
+    pub fn prepare(&mut self, world: &mut World, dt: f64) {
         let mut pets = Vec::with_capacity(world.pets.len());
         let ids: Vec<u64> = world.pets.iter().map(|p| p.id).collect();
         self.anims.retain(|id, _| ids.contains(id));
@@ -119,6 +122,17 @@ impl Stage {
                 pets.push(d);
             }
         }
+        self.prepared = pets;
+        for q in &world.particles { self.particle_image(&q.text, q.size); }
+        for p in &world.pets {
+            if let (Some(text), true) = (&p.bubble, p.sink < 0.5) { self.bubble_image(text); }
+        }
+    }
+
+    /// Draws the frame `prepare` got ready.
+    /// Returns false, drawing nothing, when the frame would look exactly like the last one.
+    pub fn render(&mut self, world: &World) -> bool {
+        let pets = std::mem::take(&mut self.prepared);
 
         // Moving toys and particles change every frame; otherwise compare what would be drawn.
         if world.balls.is_empty() && world.butterflies.is_empty() && world.particles.is_empty() {
@@ -140,7 +154,7 @@ impl Stage {
         for b in &world.balls { self.draw_ball(b, world) }
         for b in &world.butterflies { self.draw_butterfly(b, world) }
         for q in &world.particles {
-            let Some(img) = self.text_image(&q.text, q.size, 700, Rgba::white(0.35, 1.0)) else { continue };
+            let Some(img) = self.particle_image(&q.text, q.size) else { continue };
             let alpha = (q.ttl / (q.life * 0.5)).min(1.0) as f32;
             self.draw_image(img, q.p.x - img.w / 2.0, q.p.y - img.h / 2.0, alpha, false);
         }
@@ -177,6 +191,8 @@ impl Stage {
         self.canvas.flush();
         true
     }
+
+    fn particle_image(&mut self, text: &str, size: f64) -> Option<Img> { self.text_image(text, size, 700, Rgba::white(0.35, 1.0)) }
 
     fn sync(&mut self, p: &mut Pet, ground: f64, s: f64, dt: f64) -> Option<PetDraw> {
         let skin = p.skin.clone()?;
