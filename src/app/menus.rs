@@ -65,6 +65,51 @@ fn check(title: impl Into<String>, on: bool, cmd: Command) -> Node { Node::Item 
 fn note(title: impl Into<String>) -> Node { Node::Item { title: title.into(), cmd: None, checked: None } }
 fn sub(title: impl Into<String>, children: Vec<Node>) -> Node { Node::Sub { title: title.into(), children } }
 
+/// Everything set once and left: how pets look and behave, then reminders and focus, then launching.
+fn settings_items(login_enabled: Option<bool>) -> Vec<Node> {
+    let mut m = Vec::new();
+    let scale = settings::scale();
+    m.push(sub(
+        "Size",
+        [("Small", 0.8), ("Medium", 1.1), ("Large", 1.5), ("Huge", 2.0)]
+            .into_iter()
+            .map(|(name, v)| check(name, (scale - v).abs() < 0.01, Command::Scale(v)))
+            .collect(),
+    ));
+    let walk = settings::walk_area();
+    let shelf = if cfg!(target_os = "macos") { "On the Dock" } else { "On the Taskbar" };
+    m.push(sub(
+        "Walk Area",
+        vec![
+            check(shelf, walk == WalkArea::Dock, Command::Walk(WalkArea::Dock)),
+            check("Whole Screen Width", walk == WalkArea::Screen, Command::Walk(WalkArea::Screen)),
+        ],
+    ));
+    m.push(Node::Sep);
+    m.push(check("Free Will (auto activities)", settings::auto(), Command::ToggleAuto));
+    m.push(check("Visit Cursor After 1 Min Idle", settings::visit_idle_cursor(), Command::ToggleVisit));
+    let bed = settings::bedtime();
+    let mut beds = vec![check("Off (no daily rhythm)", bed.is_none(), Command::Bedtime(None))];
+    beds.extend(BEDTIMES.into_iter().map(|h| check(clock(h), bed == Some(h), Command::Bedtime(Some(h)))));
+    m.push(sub("🌙 Bedtime", beds));
+    m.push(check("🎵 Dance to Music", settings::dance_to_music(), Command::ToggleMusic));
+    m.push(check("✨ Seasonal Touches", settings::seasonal(), Command::ToggleSeasonal));
+    m.push(Node::Sep);
+    if platform::has_calendar() {
+        m.push(check("📅 Calendar Heads-Ups (10, 5, 1 min before)", settings::calendar_heads_ups(), Command::ToggleCalendar));
+    }
+    let every = settings::break_every();
+    let mut breaks = vec![check("Off", every == 0, Command::BreakEvery(0))];
+    breaks.extend(BREAK_EVERY.into_iter().map(|n| check(format!("Every {n} Minutes"), every == n, Command::BreakEvery(n))));
+    m.push(sub("🧘 Break Reminders", breaks));
+    m.push(check("📞 Focus During Calls", settings::focus_in_calls(), Command::ToggleCallFocus));
+    if let Some(on) = login_enabled {
+        m.push(Node::Sep);
+        m.push(check("Launch at Login", on, Command::ToggleLogin));
+    }
+    m
+}
+
 /// Set reminders, soonest first; choosing one cancels it.
 fn alarm_items(mut alarms: Vec<Alarm>, now: f64, hour: f64) -> Vec<Node> {
     alarms.sort_by(|a, b| a.at.total_cmp(&b.at));
@@ -160,6 +205,7 @@ impl App {
             m.push(item("🐟 Give Treats", Command::Treat));
             m.push(item("⚽ Throw a Ball", Command::ThrowBall));
             m.push(item("🦋 Release a Butterfly", Command::ReleaseButterfly));
+            m.push(Node::Sep);
             m.push(item("⏰ Remind Me…", Command::RemindMe));
             match self.focus_until {
                 Some(until) => {
@@ -191,45 +237,10 @@ impl App {
         m.push(sub("➕ Adopt / Import a Pet", adopt));
         m.push(Node::Sep);
 
-        let scale = settings::scale();
-        m.push(sub(
-            "Size",
-            [("Small", 0.8), ("Medium", 1.1), ("Large", 1.5), ("Huge", 2.0)]
-                .into_iter()
-                .map(|(name, v)| check(name, (scale - v).abs() < 0.01, Command::Scale(v)))
-                .collect(),
-        ));
-        let walk = settings::walk_area();
-        let shelf = if cfg!(target_os = "macos") { "On the Dock" } else { "On the Taskbar" };
-        m.push(sub(
-            "Walk Area",
-            vec![
-                check(shelf, walk == WalkArea::Dock, Command::Walk(WalkArea::Dock)),
-                check("Whole Screen Width", walk == WalkArea::Screen, Command::Walk(WalkArea::Screen)),
-            ],
-        ));
         if platform::has_accessibility_setting() && !platform::accessibility_trusted() {
             m.push(item("Fit Dock & Avoid My Typing (allow Accessibility)…", Command::AllowAccessibility));
         }
-        m.push(check("Visit Cursor After 1 Min Idle", settings::visit_idle_cursor(), Command::ToggleVisit));
-        m.push(check("Free Will (auto activities)", settings::auto(), Command::ToggleAuto));
-        if platform::has_calendar() {
-            m.push(check("📅 Calendar Heads-Ups (10, 5, 1 min before)", settings::calendar_heads_ups(), Command::ToggleCalendar));
-        }
-        let every = settings::break_every();
-        let mut breaks = vec![check("Off", every == 0, Command::BreakEvery(0))];
-        breaks.extend(BREAK_EVERY.into_iter().map(|n| check(format!("Every {n} Minutes"), every == n, Command::BreakEvery(n))));
-        m.push(sub("🧘 Break Reminders", breaks));
-        m.push(check("📞 Focus During Calls", settings::focus_in_calls(), Command::ToggleCallFocus));
-        m.push(check("🎵 Dance to Music", settings::dance_to_music(), Command::ToggleMusic));
-        m.push(check("✨ Seasonal Touches", settings::seasonal(), Command::ToggleSeasonal));
-        let bed = settings::bedtime();
-        let mut beds = vec![check("Off (no daily rhythm)", bed.is_none(), Command::Bedtime(None))];
-        beds.extend(BEDTIMES.into_iter().map(|h| check(clock(h), bed == Some(h), Command::Bedtime(Some(h)))));
-        m.push(sub("🌙 Bedtime", beds));
-        if let Some(on) = self.login_enabled {
-            m.push(check("Launch at Login", on, Command::ToggleLogin));
-        }
+        m.push(sub("⚙️ Settings", settings_items(self.login_enabled)));
         m.push(Node::Sep);
         m.push(item("Quit PawPal", Command::Quit));
         m

@@ -75,3 +75,12 @@ fn upcoming_reminders_are_listed_soonest_first_and_cancel_when_chosen() {
         ]
     );
 }
+
+#[test]
+fn settings_are_all_in_one_submenu() {
+    let t = titles(&settings_items(Some(true)));
+    for s in ["Size", "Walk Area", "Free Will (auto activities)", "🌙 Bedtime", "🎵 Dance to Music", "✨ Seasonal Touches", "🧘 Break Reminders", "📞 Focus During Calls", "Launch at Login"] {
+        assert!(t.contains(&s.to_string()), "{s} is in Settings");
+    }
+    assert!(!titles(&settings_items(None)).contains(&"Launch at Login".to_string()), "only where it can be set");
+}
