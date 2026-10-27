@@ -122,6 +122,9 @@ pub fn request_accessibility() {}
 /// Moving and resizing at once needs nothing special here: the app falls back to winit.
 pub fn set_frame(_window: &Window, _r: Rect) -> bool { false }
 
+/// Window see-through-ness isn't set here, so the app resizes its one window in place.
+pub fn set_alpha(_window: &Window, _alpha: f64) -> bool { false }
+
 /// The window is created override-redirect (see the app), so the window manager leaves it alone.
 pub fn prepare_window(_window: &Window) {}
 pub fn will_interact() {}

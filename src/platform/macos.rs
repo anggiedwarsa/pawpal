@@ -376,6 +376,15 @@ fn pin_contents_bottom_left(view: &NSView) {
     }
 }
 
+/// Fades the window fully in (1) or out (0); an invisible window can be resized without anyone seeing it.
+pub fn set_alpha(window: &Window, alpha: f64) -> bool {
+    let Some(view) = ns_view(window) else { return false };
+    let view: &NSView = unsafe { view.cast::<NSView>().as_ref() };
+    let Some(win) = view.window() else { return false };
+    win.setAlphaValue(alpha);
+    true
+}
+
 fn ns_view(window: &Window) -> Option<std::ptr::NonNull<c_void>> {
     match window.window_handle().ok()?.as_raw() {
         RawWindowHandle::AppKit(h) => Some(h.ns_view),

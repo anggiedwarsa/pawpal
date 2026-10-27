@@ -12,7 +12,7 @@ use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
 use glutin::config::{Config, ConfigTemplateBuilder, GlConfig};
-use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext};
+use glutin::context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext, PossiblyCurrentContext, PossiblyCurrentGlContext};
 use glutin::display::{GetGlDisplay, GlDisplay};
 use glutin::surface::{GlSurface, Surface, SwapInterval, WindowSurface};
 use glutin_winit::{DisplayBuilder, GlWindow};
@@ -46,27 +46,82 @@ const COMPACT_HEIGHT: f64 = 180.0;
 /// How long things must stay low before the window shrinks again (it grows straight away).
 const SHRINK_AFTER: Duration = Duration::from_secs(2);
 
+/// Frames the spare window draws, unseen, at its new size before it's shown, and then side by side with the
+/// old window (both showing the same picture) before that one is hidden.
+const REVEAL_AFTER: u32 = 2;
+const HIDE_AFTER: u32 = REVEAL_AFTER + 2;
+/// And a few more before the hidden window is shrunk, so that it's surely off the screen by then. macOS
+/// keeps its full-size buffers until it has drawn at the small size, so it draws twice more after that.
+const SHRINK_AFTER_HIDING: u32 = HIDE_AFTER + 3;
+const HANDOFF_DONE: u32 = SHRINK_AFTER_HIDING + 2;
+
 /// The window with its OpenGL surface and renderer.
 struct Gfx {
     window: Window,
     surface: Surface<WindowSurface>,
     context: PossiblyCurrentContext,
     stage: Stage,
+    /// Where the window is, in physical pixels (top-left origin).
+    frame: Rect,
+}
+
+impl Gfx {
+    /// Moves and sizes the window, and the drawing with it.
+    fn set_frame(&mut self, frame: Rect) {
+        self.frame = frame;
+        let size = PhysicalSize::new(frame.w.round() as u32, frame.h.round() as u32);
+        if !platform::set_frame(&self.window, frame) {
+            self.window.set_outer_position(PhysicalPosition::new(frame.x.round() as i32, frame.y.round() as i32));
+            let _ = self.window.request_inner_size(size);
+        }
+        // Size the drawing to the new window now: macOS reports the resize only later, and a frame
+        // drawn at the old size gets stretched to fit.
+        self.resize(size);
+    }
+
+    fn resize(&mut self, size: PhysicalSize<u32>) {
+        let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else { return };
+        let _ = self.context.make_current(&self.surface);
+        self.surface.resize(&self.context, w, h);
+        self.stage.resize(size.width, size.height, self.window.scale_factor());
+    }
+
+    /// Draws the frame the stage has prepared, and puts it on screen if anything changed.
+    fn render(&mut self, world: &World) {
+        let _ = self.context.make_current(&self.surface);
+        if self.stage.render(world) {
+            let _ = self.surface.swap_buffers(&self.context);
+        }
+    }
+}
+
+/// Resizing a window while it's on screen shows a wrong picture for a moment: macOS stretches, drops or
+/// shifts the old one until the new one is up (pets look bigger, vanish, or show twice). So on macOS the
+/// window is never resized while it's seen: an invisible spare one is sized instead and draws along until
+/// it has a picture, is shown, and only then is the old one hidden (and shrunk, to give its memory back).
+struct Handoff {
+    /// Frames drawn since the spare window was sized.
+    frames: u32,
 }
 
 pub struct App {
     world: World,
     skins: BTreeMap<String, Rc<Skin>>,
     gfx: Option<Gfx>,
+    /// The invisible second window (see Handoff); None where windows can't be made see-through.
+    spare: Option<Gfx>,
+    handoff: Option<Handoff>,
     tray: Option<TrayIcon>,
     tray_nodes: Vec<Node>,
     commands: HashMap<MenuId, Command>,
     pointer: Pointer,
     /// Last cursor position reported by the window (stage points), for systems that can't report it globally.
     window_cursor: Option<Point>,
-    /// Where the window is, in physical pixels (top-left origin).
+    /// Where the window on screen is, in physical pixels (top-left origin).
     window_px: Rect,
-    /// A new `window_px` the window is moved to just before the next frame is drawn (see `draw`).
+    /// Where `layout` wants the window.
+    wanted_px: Rect,
+    /// A new `wanted_px` the window is moved to just before the next frame is drawn (see `draw`).
     pending_frame: Option<Rect>,
     hittest: bool,
     frame_count: u64,
@@ -100,12 +155,15 @@ pub fn run() {
         world: World::new(),
         skins: skin::load_all(),
         gfx: None,
+        spare: None,
+        handoff: None,
         tray: None,
         tray_nodes: Vec::new(),
         commands: HashMap::new(),
         pointer: Pointer::default(),
         window_cursor: None,
         window_px: Rect::default(),
+        wanted_px: Rect::default(),
         pending_frame: None,
         hittest: true,
         frame_count: 0,
@@ -134,15 +192,20 @@ impl ApplicationHandler for App {
                 return;
             }
         }
+        self.spare = create_gfx(el).ok().filter(|g| platform::set_alpha(&g.window, 0.0));
         self.layout();
         self.load_pets();
         self.build_tray();
         self.next_frame = Instant::now();
     }
 
-    fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, el: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::Resized(size) => self.resize(size),
+            WindowEvent::Resized(size) => {
+                for g in [&mut self.gfx, &mut self.spare].into_iter().flatten() {
+                    if g.window.id() == id { g.resize(size) }
+                }
+            }
             WindowEvent::ScaleFactorChanged { .. } => self.layout(),
             WindowEvent::CursorMoved { position, .. } => {
                 let at = self.window_to_stage(position.x, position.y);
@@ -160,7 +223,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::RedrawRequested => {
-                self.stage_mut(|s| s.invalidate());
+                for g in [&mut self.gfx, &mut self.spare].into_iter().flatten() { g.stage.invalidate() }
                 self.draw(0.0);
             }
             WindowEvent::CloseRequested => el.exit(),
@@ -234,7 +297,7 @@ fn create_gfx(el: &ActiveEventLoop) -> Result<Gfx, Box<dyn std::error::Error>> {
     let canvas = femtovg::Canvas::new(renderer)?;
     platform::prepare_window(&window);
     window.set_cursor_hittest(false).ok();
-    Ok(Gfx { window, surface, context, stage: Stage::new(canvas) })
+    Ok(Gfx { window, surface, context, stage: Stage::new(canvas), frame: Rect::default() })
 }
 
 /// Prefers a config that can be see-through, then the simplest one.
@@ -262,8 +325,12 @@ fn login_item() -> Option<auto_launch::AutoLaunch> {
 }
 
 impl App {
-    fn stage_mut(&mut self, f: impl FnOnce(&mut Stage)) {
-        if let Some(g) = &mut self.gfx { f(&mut g.stage) }
+    /// Applies a change to both windows' stages.
+    fn stage_mut(&mut self, mut f: impl FnMut(&mut Stage)) {
+        for g in [&mut self.gfx, &mut self.spare].into_iter().flatten() {
+            let _ = g.context.make_current(&g.surface);
+            f(&mut g.stage);
+        }
     }
 
     fn scale(&self) -> f64 { self.gfx.as_ref().map_or(1.0, |g| g.window.scale_factor()) }
@@ -318,14 +385,59 @@ impl App {
     fn draw(&mut self, dt: f64) {
         let Some(g) = &mut self.gfx else { return };
         // The slow part (decoding a clip that starts playing, rasterising a bubble) goes first, and the window
-        // is moved or resized only after it: until the new picture is up, macOS shows the old one stretched to
-        // the new size (pets look bigger), so the two must follow each other as closely as possible.
+        // is moved or resized only after it, so that a window resized in place shows its new picture quickly.
+        let _ = g.context.make_current(&g.surface);
         g.stage.prepare(&mut self.world, dt);
         self.apply_frame();
-        let Some(g) = &mut self.gfx else { return };
-        // Nothing changed on screen: skip drawing and presenting altogether.
-        if g.stage.render(&self.world) {
-            let _ = g.surface.swap_buffers(&g.context);
+        if let (Some(g), Some(spare), Some(h)) = (&self.gfx, &mut self.spare, &self.handoff) {
+            let _ = spare.context.make_current(&spare.surface);
+            if h.frames >= SHRINK_AFTER_HIDING { spare.stage.invalidate() }
+            spare.stage.match_anims(&g.stage);
+            spare.stage.prepare(&mut self.world, 0.0);
+            spare.render(&self.world);
+        }
+        if let Some(g) = &mut self.gfx { g.render(&self.world) }
+        self.step_handoff();
+    }
+
+    /// Moves the window to where `layout` wants it; called by `draw` right before drawing. With a spare
+    /// window, that one is sized (unseen) and takes over a few frames later (see Handoff).
+    fn apply_frame(&mut self) {
+        let Some(frame) = self.pending_frame else { return };
+        let Some(spare) = &mut self.spare else {
+            self.pending_frame = None;
+            if let Some(g) = &mut self.gfx { g.set_frame(frame) }
+            self.window_px = frame;
+            return;
+        };
+        // A spare already on show can't be resized any more: the change waits until the handoff is over.
+        if self.handoff.as_ref().is_some_and(|h| h.frames >= REVEAL_AFTER) { return }
+        self.pending_frame = None;
+        spare.set_frame(frame);
+        self.handoff = Some(Handoff { frames: 0 });
+    }
+
+    /// Shows the spare window once it has drawn at its new size, then hides the old one behind it and swaps.
+    fn step_handoff(&mut self) {
+        let Some(h) = &mut self.handoff else { return };
+        h.frames += 1;
+        let frames = h.frames;
+        let (Some(g), Some(spare)) = (&mut self.gfx, &mut self.spare) else { return };
+        if frames == REVEAL_AFTER {
+            platform::set_alpha(&spare.window, 1.0);
+        } else if frames == HIDE_AFTER {
+            platform::set_alpha(&g.window, 0.0);
+            let _ = g.window.set_cursor_hittest(false);
+            let _ = spare.window.set_cursor_hittest(self.hittest);
+            std::mem::swap(g, spare);
+            self.window_px = g.frame;
+        } else if frames == SHRINK_AFTER_HIDING {
+            let f = self.window_px;
+            spare.set_frame(Rect::new(f.x, f.max_y() - 1.0, 1.0, 1.0));
+        } else if frames == HANDOFF_DONE {
+            let _ = spare.context.make_current(&spare.surface);
+            spare.stage.release();
+            self.handoff = None;
         }
     }
 
@@ -395,14 +507,6 @@ impl App {
         platform::request_accessibility();
     }
 
-    fn resize(&mut self, size: PhysicalSize<u32>) {
-        let k = self.scale();
-        let Some(g) = &mut self.gfx else { return };
-        let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else { return };
-        g.surface.resize(&g.context, w, h);
-        g.stage.resize(size.width, size.height, k);
-    }
-
     /// Sizes the window to cover the screen from the menu bar (or, when compact, from a strip above the Dock)
     /// down to just over the Dock or taskbar.
     pub fn layout(&mut self) {
@@ -426,8 +530,8 @@ impl App {
         let ground = (bottom - shelf.ground) / k;
         let top = if self.compact { (bottom - (ground + COMPACT_HEIGHT * self.world.s) * k).max(shelf.top) } else { shelf.top };
         let frame = Rect::new(shelf.screen.x, top, shelf.screen.w, bottom - top);
-        if frame != self.window_px {
-            self.window_px = frame;
+        if frame != self.wanted_px {
+            self.wanted_px = frame;
             self.pending_frame = Some(frame);
         }
         let w = &mut self.world;
@@ -446,20 +550,6 @@ impl App {
             w.with_pet(i, |w, p| if p.activity != VisitCursor { p.x = w.clamp_x(p, p.x, 20.0) });
         }
         if let Some(g) = &self.gfx { g.window.request_redraw() }
-    }
-
-    /// Moves the window to where `layout` wants it; called by `draw` right before drawing.
-    fn apply_frame(&mut self) {
-        let Some(frame) = self.pending_frame.take() else { return };
-        let Some(g) = &self.gfx else { return };
-        let size = PhysicalSize::new(frame.w.round() as u32, frame.h.round() as u32);
-        if !platform::set_frame(&g.window, frame) {
-            g.window.set_outer_position(PhysicalPosition::new(frame.x.round() as i32, frame.y.round() as i32));
-            let _ = g.window.request_inner_size(size);
-        }
-        // Size the drawing to the new window now: macOS reports the resize only later, and a frame
-        // drawn at the old size gets stretched to fit (pets look bigger, or ghost above themselves).
-        self.resize(size);
     }
 
     // Tray and menus

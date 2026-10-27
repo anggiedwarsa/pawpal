@@ -28,7 +28,7 @@ pub struct Img {
 }
 
 /// Which clip a pet is showing and how far into it.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Anim {
     clip: String,
     time: f64,
@@ -98,6 +98,16 @@ impl Stage {
     pub fn invalidate(&mut self) { self.last_scene.clear() }
 
     pub fn forget(&mut self, pet_id: u64) { self.anims.remove(&pet_id); }
+
+    /// Shows every pet at the same point of its clip as `other` does, so both draw the same picture.
+    pub fn match_anims(&mut self, other: &Stage) { self.anims = other.anims.clone() }
+
+    /// Frees the decoded frames and text, for a window that is put away.
+    pub fn release(&mut self) {
+        self.reload_clips();
+        self.drop_text_cache();
+        self.last_scene.clear();
+    }
 
     /// Forgets decoded frames, so re-imported clips are read again.
     pub fn reload_clips(&mut self) {
