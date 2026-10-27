@@ -28,6 +28,9 @@ pub enum Command {
     Treat,
     ThrowBall,
     ReleaseButterfly,
+    ToggleLaser,
+    HidePets(Option<u32>),
+    ShowPets,
     RemindMe,
     Focus(u32),
     EndFocus,
@@ -40,17 +43,23 @@ pub enum Command {
     Flip(String),
     Import { skin: Option<String>, action: &'static str },
     Remove(u64),
+    Share(String),
+    ImportShared,
     Adopt(String),
     OpenClips,
     Scale(f64),
     Walk(WalkArea),
     AllowAccessibility,
     ToggleVisit,
+    ToggleAvoidCursor,
     ToggleAuto,
     ToggleCalendar,
     BreakEvery(u32),
     Bedtime(Option<u32>),
     ToggleLogin,
+    ToggleUpdates,
+    OpenUpdate(String),
+    About,
     Quit,
 }
 
@@ -89,6 +98,7 @@ fn settings_items(login_enabled: Option<bool>) -> Vec<Node> {
     m.push(Node::Sep);
     m.push(check("Free Will (auto activities)", settings::auto(), Command::ToggleAuto));
     m.push(check("Visit Cursor After 1 Min Idle", settings::visit_idle_cursor(), Command::ToggleVisit));
+    m.push(check("🙈 Avoid My Cursor", settings::avoid_cursor(), Command::ToggleAvoidCursor));
     m.push(check("🪟 Perch on Windows", settings::perch_on_windows(), Command::TogglePerch));
     let bed = settings::bedtime();
     let mut beds = vec![check("Off (no daily rhythm)", bed.is_none(), Command::Bedtime(None))];
@@ -105,11 +115,24 @@ fn settings_items(login_enabled: Option<bool>) -> Vec<Node> {
     breaks.extend(BREAK_EVERY.into_iter().map(|n| check(format!("Every {n} Minutes"), every == n, Command::BreakEvery(n))));
     m.push(sub("🧘 Break Reminders", breaks));
     m.push(check("📞 Focus During Calls", settings::focus_in_calls(), Command::ToggleCallFocus));
-    if let Some(on) = login_enabled {
-        m.push(Node::Sep);
-        m.push(check("Launch at Login", on, Command::ToggleLogin));
-    }
+    m.push(Node::Sep);
+    if let Some(on) = login_enabled { m.push(check("Launch at Login", on, Command::ToggleLogin)) }
+    m.push(check("Check for Updates", settings::check_updates(), Command::ToggleUpdates));
     m
+}
+
+/// Putting the pets away for a while, or bringing them back; `shortcut` is the global key, if it could be set up.
+fn hide_items(hidden: bool, shortcut: Option<&str>) -> Node {
+    let key = shortcut.map_or(String::new(), |k| format!("  ({k})"));
+    if hidden { return item(format!("🐾 Bring Pets Back{key}"), Command::ShowPets) }
+    sub(
+        format!("🙈 Hide Pets{key}"),
+        vec![
+            item("For 15 Minutes", Command::HidePets(Some(15))),
+            item("For 1 Hour", Command::HidePets(Some(60))),
+            item("Until I Bring Them Back", Command::HidePets(None)),
+        ],
+    )
 }
 
 /// Set reminders, soonest first; choosing one cancels it.
@@ -190,6 +213,7 @@ pub fn pet_menu(p: &Pet) -> Vec<Node> {
         if let Some(credit) = &skin.credit { m.push(note(credit.trim())) }
         m.push(item("↔️ Flip Direction", Command::Flip(skin.name.clone())));
         m.push(sub(format!("➕ Add a Clip for {}", skin.name), import_items(Some(&skin.name))));
+        m.push(item(format!("📤 Share {}…", skin.name), Command::Share(skin.name.clone())));
     }
     m.push(item("👋 Say Goodbye (Remove)", Command::Remove(p.id)));
     m
@@ -207,6 +231,8 @@ impl App {
             m.push(item("🐟 Give Treats", Command::Treat));
             m.push(item("⚽ Throw a Ball", Command::ThrowBall));
             m.push(item("🦋 Release a Butterfly", Command::ReleaseButterfly));
+            if !self.world.tucked { m.push(check("🔴 Laser Pointer", self.world.laser, Command::ToggleLaser)) }
+            m.push(hide_items(self.world.tucked, self.hotkey_label()));
             m.push(Node::Sep);
             m.push(item("⏰ Remind Me…", Command::RemindMe));
             match self.focus_until {
@@ -234,6 +260,7 @@ impl App {
             .collect();
         if !adopt.is_empty() { adopt.push(Node::Sep) }
         adopt.push(sub("Import Clip (video, GIF or WebP)", import_items(None)));
+        adopt.push(item("Import a Shared Pet (.pawpal)…", Command::ImportShared));
         adopt.push(item("Open Clips Folder", Command::OpenClips));
         adopt.push(note("Tip: same cat, side view, plain background, 2–6 s"));
         m.push(sub("➕ Adopt / Import a Pet", adopt));
@@ -244,6 +271,8 @@ impl App {
         }
         m.push(sub("⚙️ Settings", settings_items(self.login_enabled)));
         m.push(Node::Sep);
+        if let Some(r) = &self.update { m.push(item(format!("⬆️ Update to PawPal {}…", r.version), Command::OpenUpdate(r.url.clone()))) }
+        m.push(item("About PawPal…", Command::About));
         m.push(item("Quit PawPal", Command::Quit));
         m
     }

@@ -226,8 +226,28 @@ pub fn is_meeting_title(title: &str) -> bool {
     !name.is_empty() && !BROWSERS.iter().any(|b| name.starts_with(b))
 }
 
-/// Opens a folder in the system file browser.
-pub fn open_folder(path: &std::path::Path) {
+/// Shows a message with these buttons (the first is the default); returns which was chosen.
+/// Up to three buttons; macOS has its own version with the app's icon.
+#[cfg(not(target_os = "macos"))]
+pub fn alert(title: &str, text: &str, buttons: &[&str], error: bool) -> Option<usize> {
+    use rfd::{MessageButtons, MessageDialogResult, MessageLevel};
+    let level = if error { MessageLevel::Error } else { MessageLevel::Info };
+    let mut d = rfd::MessageDialog::new().set_title(title).set_description(text).set_level(level);
+    match buttons {
+        [] => {}
+        [one] => d = d.set_buttons(MessageButtons::OkCustom(one.to_string())),
+        [a, b] => d = d.set_buttons(MessageButtons::OkCancelCustom(a.to_string(), b.to_string())),
+        [a, b, c, ..] => d = d.set_buttons(MessageButtons::YesNoCancelCustom(a.to_string(), b.to_string(), c.to_string())),
+    }
+    match d.show() {
+        MessageDialogResult::Custom(c) => buttons.iter().position(|b| *b == c),
+        MessageDialogResult::Ok => Some(0),
+        _ => None,
+    }
+}
+
+/// Opens a folder in the system file browser, or a web address in the browser.
+pub fn open(path: impl AsRef<std::ffi::OsStr>) {
     let opener = if cfg!(target_os = "macos") { "open" } else if cfg!(windows) { "explorer" } else { "xdg-open" };
     let _ = std::process::Command::new(opener).arg(path).spawn();
 }

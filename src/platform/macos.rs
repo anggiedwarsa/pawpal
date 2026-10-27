@@ -14,8 +14,9 @@ use core_foundation::number::CFNumber;
 use core_foundation::string::{CFString, CFStringGetTypeID, CFStringRef};
 use image::RgbaImage;
 use objc2::MainThreadMarker;
-use objc2_app_kit::{NSApplicationActivationOptions, NSApplicationActivationPolicy, NSEvent, NSRunningApplication, NSScreen, NSView, NSWindowCollectionBehavior, NSWorkspace};
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use objc2::AllocAnyThread;
+use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSAlertStyle, NSApplication, NSApplicationActivationOptions, NSApplicationActivationPolicy, NSImage, NSEvent, NSRunningApplication, NSScreen, NSView, NSWindowCollectionBehavior, NSWorkspace};
+use objc2_foundation::{NSData, NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::Window;
 
@@ -422,6 +423,30 @@ fn ns_view(window: &Window) -> Option<std::ptr::NonNull<c_void>> {
         RawWindowHandle::AppKit(h) => Some(h.ns_view),
         _ => None,
     }
+}
+
+/// Gives alerts the paw icon even when PawPal runs outside its app bundle (`cargo run`).
+pub fn set_app_icon(png: &[u8]) {
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    let Some(icon) = NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(png)) else { return };
+    unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&icon)) };
+}
+
+/// Shows a message with PawPal's icon and these buttons (the first is the default); returns which was chosen.
+/// rfd's message dialogs go through CFUserNotification on macOS, which always shows a generic icon.
+pub fn alert(title: &str, text: &str, buttons: &[&str], error: bool) -> Option<usize> {
+    let mtm = MainThreadMarker::new()?;
+    let alert = NSAlert::new(mtm);
+    alert.setMessageText(&NSString::from_str(title));
+    alert.setInformativeText(&NSString::from_str(text));
+    if error { alert.setAlertStyle(NSAlertStyle::Critical) }
+    for b in buttons { alert.addButtonWithTitle(&NSString::from_str(b)); }
+    // With no Dock icon PawPal isn't in front, and the alert would open behind the user's windows.
+    #[allow(deprecated)]
+    NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+    let chosen = alert.runModal() - NSAlertFirstButtonReturn;
+    done_interacting();
+    usize::try_from(chosen).ok().filter(|&i| i < buttons.len().max(1))
 }
 
 /// Called when the user presses on a pet: clicking our window makes PawPal the active app.

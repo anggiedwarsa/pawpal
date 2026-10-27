@@ -173,6 +173,7 @@ pub fn prepare_window(window: &Window) {
     }
 }
 
+pub fn set_app_icon(_png: &[u8]) {}
 pub fn will_interact() {}
 pub fn done_interacting() {}
 pub fn note_frontmost() {}

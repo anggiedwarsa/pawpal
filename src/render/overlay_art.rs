@@ -40,6 +40,18 @@ impl Stage {
         self.canvas.restore();
     }
 
+    /// The laser pointer's dot: a hot red centre in a soft glow.
+    pub(super) fn draw_laser(&mut self, at: Point, world: &World) {
+        let s = world.s;
+        let glow = Paint::radial_gradient(at.x as f32, at.y as f32, 0.0, (10.0 * s) as f32, color(Rgba::hex_alpha(0xFF2A2A, 0.55)), color(Rgba::hex_alpha(0xFF2A2A, 0.0)));
+        let mut halo = Path::new();
+        halo.circle(at.x as f32, at.y as f32, (10.0 * s) as f32);
+        self.canvas.fill_path(&halo, &glow);
+        let mut dot = Path::new();
+        dot.circle(at.x as f32, at.y as f32, (3.0 * s) as f32);
+        self.canvas.fill_path(&dot, &fill(Rgba::hex(0xFF3B3B)));
+    }
+
     pub(super) fn draw_bowl(&mut self, b: &Bowl, world: &World) {
         let (s, g) = (world.s, world.ground + b.floor);
         self.canvas.save();

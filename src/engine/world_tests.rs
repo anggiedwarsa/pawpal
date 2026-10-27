@@ -159,3 +159,55 @@ fn pets_that_can_go_anywhere_need_the_whole_screen() {
     w.with_pet(0, |w, p| w.settle(p));
     assert_eq!(w.headroom(), f64::INFINITY, "a pet living up the screen");
 }
+
+#[test]
+fn shy_pets_run_to_the_far_side_of_the_cursor() {
+    let mut w = world(2);
+    w.mouse = pt(180.0, 20.0);
+    w.shy_away();
+    let p = &w.pets[0];
+    assert_eq!((p.activity, p.commanded), (Run, true));
+    assert!(p.target_x.unwrap() > 180.0 + SHY_RUN, "it runs right, away from the cursor on its left");
+    assert_eq!(w.pets[1].activity, Idle, "a pet far from the cursor carries on");
+}
+
+#[test]
+fn shy_pets_keep_running_and_leave_busy_ones_alone() {
+    let mut w = world(1);
+    w.mouse = pt(180.0, 20.0);
+    w.shy_away();
+    let target = w.pets[0].target_x;
+    w.mouse = pt(185.0, 20.0);
+    w.shy_away();
+    assert_eq!(w.pets[0].target_x, target, "already running away, it doesn't start over");
+
+    let mut w = world(1);
+    w.with_pet(0, |w, p| w.start(p, Sleep, false));
+    w.mouse = pt(200.0, 20.0);
+    w.shy_away();
+    assert_eq!(w.pets[0].activity, Sleep, "sleeping pets aren't woken");
+}
+
+#[test]
+fn a_cornered_shy_pet_stays_so_it_can_be_caught() {
+    let mut w = world(1);
+    w.with_pet(0, |w, p| {
+        p.x = 80.0;
+        w.start(p, Walk, false);
+        p.vx = 45.0; // walking towards the cursor
+    });
+    w.mouse = pt(120.0, 20.0);
+    w.shy_away();
+    let p = &w.pets[0];
+    assert_eq!((p.activity, p.vx, p.facing), (Sit, 0.0, 1.0), "it stops and faces the cursor");
+}
+
+#[test]
+fn moving_the_cursor_only_scares_pets_when_shy() {
+    let mut w = world(1);
+    w.step(0.01, pt(200.0, 20.0), f64::INFINITY);
+    assert_ne!(w.pets[0].activity, Run);
+    w.shy = true;
+    w.step(0.01, pt(205.0, 20.0), f64::INFINITY);
+    assert_eq!(w.pets[0].activity, Run);
+}

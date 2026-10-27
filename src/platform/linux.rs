@@ -138,6 +138,7 @@ pub fn set_alpha(_window: &Window, _alpha: f64) -> bool { false }
 
 /// The window is created override-redirect (see the app), so the window manager leaves it alone.
 pub fn prepare_window(_window: &Window) {}
+pub fn set_app_icon(_png: &[u8]) {}
 pub fn will_interact() {}
 pub fn done_interacting() {}
 pub fn note_frontmost() {}

@@ -1,9 +1,10 @@
-//! Picking a clip, naming the pet it belongs to, and importing it in the background.
+//! Picking a clip, naming the pet it belongs to, and importing it in the background;
+//! and sharing whole pets as `.pawpal` files.
 
 use std::sync::mpsc;
 
 use super::App;
-use crate::data::{clip_importer, skin};
+use crate::data::{clip_importer, pet_share, skin};
 use crate::platform;
 
 pub enum ImportMsg {
@@ -61,11 +62,7 @@ impl App {
                 ImportMsg::Done(_, Err(error)) => {
                     self.import_rx = None;
                     self.set_status("🐾");
-                    rfd::MessageDialog::new()
-                        .set_level(rfd::MessageLevel::Error)
-                        .set_title("Couldn't import this clip")
-                        .set_description(error)
-                        .show();
+                    platform::alert("Couldn't import this clip", &error, &["OK"], true);
                 }
             }
         }
@@ -79,6 +76,41 @@ impl App {
         }
         if let Some(p) = self.world.pets.iter_mut().find(|p| p.skin.as_ref().is_some_and(|s| s.name == skin_name)) {
             p.say(message, 4.0);
+        }
+    }
+
+    /// "📤 Share…": packs a pet into a `.pawpal` file to send to a friend.
+    pub fn share_pet(&mut self, name: &str) {
+        let Some(mut out) = rfd::FileDialog::new()
+            .set_title(format!("Share {name}"))
+            .set_file_name(format!("{name}.{}", pet_share::EXTENSION))
+            .add_filter("PawPal pet", &[pet_share::EXTENSION])
+            .save_file()
+        else {
+            return;
+        };
+        if out.extension().is_none_or(|e| e != pet_share::EXTENSION) { out.set_extension(pet_share::EXTENSION); }
+        match pet_share::export(&skin::root().join(name), name, &out) {
+            Ok(()) => self.world.tell(&format!("Packed up {name}! Send the .pawpal file to a friend 🐾")),
+            Err(e) => { platform::alert("Couldn't share this pet", &e, &["OK"], true); }
+        }
+    }
+
+    /// "Import a Shared Pet…": unpacks a friend's `.pawpal` file and adopts the pet.
+    pub fn import_shared_ui(&mut self) {
+        let Some(file) = rfd::FileDialog::new()
+            .set_title("Choose a shared pet")
+            .add_filter("PawPal pet", &[pet_share::EXTENSION])
+            .pick_file()
+        else {
+            return;
+        };
+        match pet_share::import(&file, &skin::root()) {
+            Ok(name) => {
+                self.reload_skins();
+                self.adopt(&name);
+            }
+            Err(e) => { platform::alert("Couldn't import this pet", &e, &["OK"], true); }
         }
     }
 

@@ -37,6 +37,8 @@ struct Prefs {
     scale: f64,
     auto: bool,
     visit_idle_cursor: bool,
+    /// Pets run off when the cursor comes near.
+    avoid_cursor: bool,
     walk_area: WalkArea,
     pets: Vec<PetSave>,
     /// Skins whose clips are shown mirrored.
@@ -58,6 +60,8 @@ struct Prefs {
     seasonal: bool,
     /// Pets sometimes hop up onto the front window.
     perch_on_windows: bool,
+    /// Look for a newer release on GitHub once a day.
+    check_updates: bool,
     /// Ghostty's character cell (points), learned from its screen text since it doesn't report the caret.
     terminal_cell: Option<(f64, f64)>,
 }
@@ -68,6 +72,7 @@ impl Default for Prefs {
             scale: 1.1,
             auto: true,
             visit_idle_cursor: false,
+            avoid_cursor: false,
             walk_area: WalkArea::Dock,
             pets: Vec::new(),
             flipped: BTreeSet::new(),
@@ -80,6 +85,7 @@ impl Default for Prefs {
             dance_to_music: true,
             seasonal: true,
             perch_on_windows: true,
+            check_updates: true,
             terminal_cell: None,
         }
     }
@@ -131,6 +137,8 @@ pub fn auto() -> bool { prefs().auto }
 pub fn set_auto(v: bool) { update(|p| p.auto = v) }
 pub fn visit_idle_cursor() -> bool { prefs().visit_idle_cursor }
 pub fn set_visit_idle_cursor(v: bool) { update(|p| p.visit_idle_cursor = v) }
+pub fn avoid_cursor() -> bool { prefs().avoid_cursor }
+pub fn set_avoid_cursor(v: bool) { update(|p| p.avoid_cursor = v) }
 pub fn walk_area() -> WalkArea { prefs().walk_area }
 pub fn set_walk_area(v: WalkArea) { update(|p| p.walk_area = v) }
 pub fn pets() -> Vec<PetSave> { prefs().pets.clone() }
@@ -161,6 +169,8 @@ pub fn seasonal() -> bool { prefs().seasonal }
 pub fn set_seasonal(v: bool) { update(|p| p.seasonal = v) }
 pub fn perch_on_windows() -> bool { prefs().perch_on_windows }
 pub fn set_perch_on_windows(v: bool) { update(|p| p.perch_on_windows = v) }
+pub fn check_updates() -> bool { prefs().check_updates }
+pub fn set_check_updates(v: bool) { update(|p| p.check_updates = v) }
 pub fn terminal_cell() -> Option<(f64, f64)> { prefs().terminal_cell }
 pub fn set_terminal_cell(v: Option<(f64, f64)>) { update(|p| p.terminal_cell = v) }
 

@@ -31,6 +31,7 @@ use pointer::Pointer;
 
 use crate::data::settings::{self, PetSave};
 use crate::data::skin::{self, Skin};
+use crate::data::updates::{self, Release};
 use crate::domain::Activity::*;
 use crate::domain::{Pet, Species};
 use crate::engine::alarms::{alarm_text, clock_label, parse_when, take_due, Alarm};
@@ -39,6 +40,7 @@ use crate::engine::breaks::{nudge_text, BreakTimer};
 use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
 use crate::engine::focus::CallWatch;
 use crate::engine::greet::Presence;
+use crate::engine::laser::LASER_IDLE;
 use crate::engine::seasons::touch;
 use crate::engine::{World, TYPING_PAUSE};
 use crate::platform;
@@ -158,6 +160,17 @@ pub struct App {
     perch_lost: Option<Instant>,
     /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
     compact: bool,
+    /// When pets put away from the tray come back out (seconds since the epoch; infinite: when asked).
+    hide_until: Option<f64>,
+    /// Owns the global hide/show shortcut; None when it couldn't be registered (another app has it).
+    hotkeys: Option<global_hotkey::GlobalHotKeyManager>,
+    /// A newer release than this build, once a check has found one.
+    update: Option<Release>,
+    /// A check for updates has got an answer from GitHub.
+    update_checked: bool,
+    update_rx: Option<Receiver<Option<Release>>>,
+    /// When to look for updates next (seconds since the epoch).
+    next_update_check: f64,
     low_since: Option<Instant>,
 }
 
@@ -175,6 +188,7 @@ pub fn run() {
         if std::env::var_os("DISPLAY").is_some() { builder.with_x11(); }
     }
     let event_loop = builder.build().expect("PawPal couldn't start its event loop");
+    platform::set_app_icon(ICON_PNG);
     let mut app = App {
         world: World::new(),
         skins: skin::load_all(),
@@ -195,6 +209,12 @@ pub fn run() {
         last_tick: Instant::now(),
         compact: false,
         low_since: None,
+        hide_until: None,
+        hotkeys: None,
+        update: None,
+        update_checked: false,
+        update_rx: None,
+        next_update_check: 0.0,
         reminders: Reminders::default(),
         breaks: BreakTimer::default(),
         presence: Presence::default(),
@@ -229,6 +249,7 @@ impl ApplicationHandler for App {
         self.layout();
         self.read_clock();
         self.load_pets();
+        self.hotkeys = register_hotkey();
         self.build_tray();
         self.next_frame = Instant::now();
     }
@@ -400,6 +421,12 @@ impl App {
             self.read_clock();
             if let Some(away) = self.presence.back(now_secs(), self.world.mouse_still) { self.world.welcome_back(away) }
             if self.focus_until.is_some_and(|t| now_secs() >= t) { self.end_focus(true) }
+            if self.hide_until.is_some_and(|t| now_secs() >= t) { self.show_pets() }
+            if self.world.laser && self.world.mouse_still > LASER_IDLE {
+                self.world.set_laser(false);
+                self.build_tray();
+            }
+            self.check_for_updates();
         }
         self.poll_import();
         self.handle_menu_events(el);
@@ -418,6 +445,7 @@ impl App {
         let dt = (now - self.last_tick).as_secs_f64().min(0.1);
         self.last_tick = now;
         let mouse = self.mouse_in_stage();
+        self.world.shy = settings::avoid_cursor();
         self.world.step(dt, mouse, platform::seconds_since_key());
         self.fit_window();
         self.draw(dt);
@@ -538,7 +566,7 @@ impl App {
         }
         if state.sharing != self.world.sharing {
             // Said while still sharing, so the pets know why they hid.
-            if !state.sharing { self.world.set_fullscreen(platform::fullscreen_active()) }
+            if !state.sharing { self.world.set_fullscreen(platform::fullscreen_active() || self.world.tucked) }
             self.world.sharing = state.sharing;
             if state.sharing { self.world.set_fullscreen(true) }
             self.layout();
@@ -642,7 +670,7 @@ impl App {
     /// `check_fullscreen` is passed about once a second: listing every window costs more than the rest.
     fn watch_typing(&mut self, check_fullscreen: bool) {
         platform::note_frontmost();
-        let fullscreen = if check_fullscreen { platform::fullscreen_active() || self.world.sharing } else { self.world.fullscreen };
+        let fullscreen = if check_fullscreen { platform::fullscreen_active() || self.world.sharing || self.world.tucked } else { self.world.fullscreen };
         if fullscreen != self.world.fullscreen {
             self.world.set_fullscreen(fullscreen);
             self.layout();
@@ -753,6 +781,10 @@ impl App {
     }
 
     fn handle_menu_events(&mut self, el: &ActiveEventLoop) {
+        let keys = global_hotkey::GlobalHotKeyEvent::receiver().try_iter().filter(|e| e.state == global_hotkey::HotKeyState::Pressed).count();
+        if keys % 2 == 1 {
+            if self.world.tucked { self.show_pets() } else { self.hide_pets(None) }
+        }
         let events: Vec<MenuEvent> = MenuEvent::receiver().try_iter().collect();
         for e in events {
             if let Some(cmd) = self.commands.get(&e.id).cloned() {
@@ -784,6 +816,9 @@ impl App {
             Command::Treat => w.treat(),
             Command::ThrowBall => w.throw_ball(),
             Command::ReleaseButterfly => w.release_butterfly(),
+            Command::ToggleLaser => w.set_laser(!w.laser),
+            Command::HidePets(minutes) => self.hide_pets(minutes),
+            Command::ShowPets => self.show_pets(),
             Command::RemindMe => self.remind_me(),
             Command::Focus(n) => {
                 self.focus_until = Some(now_secs() + n as f64 * 60.0);
@@ -807,8 +842,10 @@ impl App {
             Command::Flip(name) => settings::toggle_flipped(&name),
             Command::Import { skin, action } => self.import_clip_ui(skin, action),
             Command::Remove(id) => self.remove_pet(id),
+            Command::Share(name) => self.share_pet(&name),
+            Command::ImportShared => self.import_shared_ui(),
             Command::Adopt(name) => self.adopt(&name),
-            Command::OpenClips => platform::open_folder(&skin::root()),
+            Command::OpenClips => platform::open(skin::root()),
             Command::Scale(v) => settings::set_scale(v),
             Command::Walk(v) => {
                 settings::set_walk_area(v);
@@ -816,6 +853,7 @@ impl App {
             }
             Command::AllowAccessibility => platform::request_accessibility(),
             Command::ToggleVisit => settings::set_visit_idle_cursor(!settings::visit_idle_cursor()),
+            Command::ToggleAvoidCursor => settings::set_avoid_cursor(!settings::avoid_cursor()),
             Command::ToggleAuto => settings::set_auto(!settings::auto()),
             Command::ToggleCalendar => settings::set_calendar_heads_ups(!settings::calendar_heads_ups()),
             Command::BreakEvery(n) => settings::set_break_every(n),
@@ -831,6 +869,12 @@ impl App {
                     self.login_enabled = l.is_enabled().ok();
                 }
             }
+            Command::ToggleUpdates => {
+                settings::set_check_updates(!settings::check_updates());
+                self.next_update_check = 0.0;
+            }
+            Command::OpenUpdate(url) => platform::open(url),
+            Command::About => self.about(),
             Command::Quit => {
                 self.save_pets();
                 el.exit();
@@ -909,9 +953,106 @@ impl App {
     }
 }
 
+/// The global shortcut that hides the pets or brings them back: ⌃⌥P on a Mac, Ctrl+Alt+P elsewhere.
+fn register_hotkey() -> Option<global_hotkey::GlobalHotKeyManager> {
+    use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+    let manager = global_hotkey::GlobalHotKeyManager::new().map_err(|e| eprintln!("PawPal shortcut: {e}")).ok()?;
+    manager.register(HotKey::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyP)).map_err(|e| eprintln!("PawPal shortcut: {e}")).ok()?;
+    Some(manager)
+}
+
+impl App {
+    /// How the hide/show shortcut is written in the menu, if it's set up.
+    pub(super) fn hotkey_label(&self) -> Option<&'static str> {
+        self.hotkeys.as_ref().map(|_| if cfg!(target_os = "macos") { "⌃⌥P" } else { "Ctrl+Alt+P" })
+    }
+
+    /// Puts the pets away in the corner, out of sight, for `minutes` (or until brought back).
+    fn hide_pets(&mut self, minutes: Option<u32>) {
+        self.hide_until = Some(minutes.map_or(f64::INFINITY, |m| now_secs() + m as f64 * 60.0));
+        self.world.set_laser(false);
+        self.world.tucked = true;
+        self.world.set_fullscreen(true);
+        self.layout();
+        self.build_tray();
+    }
+
+    fn show_pets(&mut self) {
+        self.hide_until = None;
+        // Said while still tucked away, so the pets know why they hid; a movie still playing keeps them in the corner.
+        self.world.set_fullscreen(platform::fullscreen_active() || self.world.sharing);
+        self.world.tucked = false;
+        self.layout();
+        self.build_tray();
+    }
+
+    /// Once a day (and at launch): asks GitHub in the background whether there's a newer PawPal,
+    /// and picks up the answer when it comes.
+    fn check_for_updates(&mut self) {
+        if let Some(rx) = &self.update_rx {
+            let Ok(latest) = rx.try_recv() else { return };
+            self.update_rx = None;
+            self.update_checked |= latest.is_some();
+            self.update = updates::newer_than_this(latest);
+            self.build_tray();
+        }
+        if !settings::check_updates() || now_secs() < self.next_update_check { return }
+        self.next_update_check = now_secs() + updates::CHECK_EVERY;
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.update_rx = Some(rx);
+        std::thread::spawn(move || { let _ = tx.send(updates::fetch_latest()); });
+    }
+
+    /// Shows the version and who made PawPal, with a way to its web page, or to the newer version if there is one.
+    fn about(&mut self) {
+        let mut text = format!(
+            "Version {}\n\n{}\n\nMade by anggiedwarsa\n{}",
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_DESCRIPTION"),
+            updates::WEBSITE,
+        );
+        match &self.update {
+            Some(r) => {
+                text += &format!("\n\nPawPal {} is out!", r.version);
+                if platform::alert("About PawPal", &text, &["Download Update", "Close"], false) == Some(0) { platform::open(&r.url) }
+            }
+            None => {
+                if self.update_checked { text += "\n\nYou have the latest version." }
+                match platform::alert("About PawPal", &text, &["Check for Updates", "Visit Website", "Close"], false) {
+                    Some(0) => self.check_now(),
+                    Some(1) => platform::open(updates::WEBSITE),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    /// "Check for Updates" in About: asks GitHub right away (even with the daily check off) and says what it found.
+    fn check_now(&mut self) {
+        let Some(latest) = updates::fetch_latest() else {
+            let text = "PawPal couldn't reach GitHub. Check your internet connection and try again.";
+            platform::alert("Couldn't check for updates", text, &["OK"], true);
+            return;
+        };
+        self.update_checked = true;
+        self.update = updates::newer_than_this(Some(latest));
+        self.build_tray();
+        let current = env!("CARGO_PKG_VERSION");
+        match &self.update {
+            Some(r) => {
+                let text = format!("You have version {current}. Download the new one from its release page.");
+                if platform::alert(&format!("PawPal {} is out!", r.version), &text, &["Download Update", "Later"], false) == Some(0) { platform::open(&r.url) }
+            }
+            None => { platform::alert("You're up to date", &format!("PawPal {current} is the latest version."), &["OK"], false); }
+        }
+    }
+}
+
+const ICON_PNG: &[u8] = include_bytes!("../../assets/icon.png");
+
 /// The app icon, for trays that need a picture (Windows and Linux).
 fn paw_icon() -> tray_icon::Icon {
-    let img = image::load_from_memory(include_bytes!("../../assets/icon.png")).expect("bundled icon").to_rgba8();
+    let img = image::load_from_memory(ICON_PNG).expect("bundled icon").to_rgba8();
     let img = image::imageops::resize(&img, 64, 64, image::imageops::FilterType::Triangle);
     tray_icon::Icon::from_rgba(img.into_raw(), 64, 64).expect("valid icon")
 }

@@ -1,5 +1,6 @@
 //! How pets decide what to do and how each activity plays out.
 
+use super::laser::LASER_CHANCE;
 use super::perch::PERCH_CHANCE;
 use super::rhythm::{weight, DayPart};
 use super::world::{on_dock, World, DANCE_TO_MUSIC, VISIT_DURATION, VISIT_FOLLOW_DISTANCE};
@@ -23,6 +24,7 @@ impl World {
         if matches!(a, Dragged | Hop | Remind) { p.climbing = false }
         p.resume = None;
         if a != Hop { p.perch_pending = None }
+        p.buddy = None;
         p.activity = a;
         p.age = 0.0;
         p.step = 0;
@@ -154,6 +156,7 @@ impl World {
     pub(super) fn choose_next(&mut self, p: &mut Pet) {
         // Nothing gets in front of a full-screen video: back to the corner.
         if self.fullscreen { return self.start(p, Hide, false) }
+        if self.laser && p.supports(ChaseCursor) && chance(LASER_CHANCE) { return self.start(p, ChaseCursor, false) }
         if !settings::auto() {
             self.start(p, Idle, false);
             p.timer = 3.0;
@@ -175,6 +178,7 @@ impl World {
             if chance(0.3) { p.say(pick(&["♪ I love this song!", "🎶 Dance break!", "♫ Ooh, music!"]), 2.6) }
             return self.start(p, Dance, false);
         }
+        if self.pets.len() > 1 && self.buddy_up(p) { return }
         if p.hunger > 70.0 && chance(0.35) {
             p.say(pick(p.species.hungry()), 3.0);
             let next = if can(Meow) { Meow } else { Idle };
@@ -250,6 +254,8 @@ impl World {
                 p.vx = 0.0;
                 if p.age > 1.5 && chance(dt * 0.25) { p.facing *= -1.0 }
             }
+            Walk if p.buddy.is_some() => self.follow_buddy(p),
+            Groom if p.buddy.is_some() => self.groom_buddy(p, dt),
             Walk => {
                 let target = p.target_x.unwrap_or_else(|| self.random_x_for(p));
                 p.target_x = Some(target);
@@ -313,7 +319,8 @@ impl World {
                 if p.fx <= 0.0 {
                     p.fx = 1.3;
                     let at = self.head_point(p) + pt(8.0 * s * p.facing, 8.0 * s);
-                    self.emit_with("z", at, 12.0, pt(p.facing * 8.0, 18.0), 2.4);
+                    let mark = if p.step == ASLEEP && chance(0.3) && self.snuggled(p) { "💕" } else { "z" };
+                    self.emit_with(mark, at, 12.0, pt(p.facing * 8.0, 18.0), 2.4);
                 }
                 if p.energy >= 100.0 && !p.commanded && !self.sleeps_through(p) { p.timer = p.timer.min(0.0) }
             }
@@ -338,6 +345,7 @@ impl World {
             Eat => self.eat(p, dt),
             PlayBall => self.play_ball(p),
             ChaseButterfly => self.chase_butterfly(p, dt),
+            ChaseCursor if self.laser => self.chase_laser(p, dt),
             ChaseCursor => {
                 let above = self.mouse.y - ground - p.floor;
                 if above > 260.0 * s || above < -ground { p.timer = p.timer.min(0.0) }
@@ -550,7 +558,8 @@ impl World {
     fn hop(&mut self, p: &mut Pet, dt: f64) {
         if self.leap(p, dt) {
             self.land(p);
-            self.start(p, if chance(0.6) && p.supports(Walk) { Walk } else { Idle }, false);
+            let next = if self.laser && p.supports(ChaseCursor) { ChaseCursor } else if chance(0.6) && p.supports(Walk) { Walk } else { Idle };
+            self.start(p, next, false);
         }
     }
 

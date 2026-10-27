@@ -61,6 +61,8 @@ pub struct Pet {
     /// The window (stage coordinates) the pet lives on top of, and the one it's hopping up onto.
     pub perched: Option<crate::support::Rect>,
     pub perch_pending: Option<crate::support::Rect>,
+    /// The friend it's grooming or tagging along behind (see `engine::buddies`).
+    pub buddy: Option<u64>,
     /// The current activity is a trick it was asked for (see `engine::tricks`).
     pub trick: bool,
     /// What it was doing before going out to give a calendar heads-up.

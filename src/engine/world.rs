@@ -54,6 +54,12 @@ pub struct World {
     pub flurry: Flurry,
     /// The front window (stage coordinates), fed in by the app, for pets to perch on.
     pub perch: Option<Rect>,
+    /// Pets run off when the cursor comes near (the "Avoid My Cursor" setting), fed in by the app.
+    pub shy: bool,
+    /// The laser pointer toy is on: a red dot at the cursor (see `laser`).
+    pub laser: bool,
+    /// The user put the pets away for a while: they wait in the corner out of sight (with `fullscreen` set too).
+    pub tucked: bool,
 }
 
 /// Seconds the cursor must stay still before a pet comes to visit it.
@@ -68,12 +74,18 @@ pub const DANCE_TO_MUSIC: f64 = 0.4;
 pub const TYPING_PAUSE: f64 = 10.0;
 /// How far a pet living off the Dock roams either side of where it was put.
 pub const ROAM: f64 = 160.0;
+/// How near (points, at size 1) the moving cursor may come before a shy pet runs off.
+pub const SHY_DISTANCE: f64 = 50.0;
+/// How far past the cursor (points, at size 1) a shy pet runs.
+pub const SHY_RUN: f64 = 140.0;
 
 /// Activities that happen on the Dock (friends): a pet living elsewhere comes down for them.
 /// Food and toys don't need it: they appear on the level of the pet they're for.
 pub fn on_dock(a: Activity) -> bool { matches!(a, PlayFriend) }
 /// Activities typing doesn't interrupt.
 fn busy(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | Hop | Sleep | Eat | Peekaboo | Petted | Hide | Remind) }
+/// Activities a shy pet doesn't break off to run from the cursor.
+fn unflappable(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | ChaseCursor | Hop | Sleep | Peekaboo | Petted | Hide | Remind) }
 
 impl World {
     pub fn new() -> World {
@@ -106,6 +118,9 @@ impl World {
             month: 1,
             flurry: Flurry::default(),
             perch: None,
+            shy: false,
+            laser: false,
+            tucked: false,
             below: 0.0,
             dock_start: f64::NEG_INFINITY,
             dock_end: f64::INFINITY,
@@ -131,7 +146,8 @@ impl World {
     /// `since_key` is the time since the last key press; only that is read, never which key.
     pub fn step(&mut self, dt: f64, m: Point, since_key: f64) {
         self.s = settings::scale();
-        if (m.x - self.mouse.x).hypot(m.y - self.mouse.y) > 2.0 {
+        let moved = (m.x - self.mouse.x).hypot(m.y - self.mouse.y) > 2.0;
+        if moved {
             self.mouse_still = 0.0;
             self.mouse = m;
             self.visited_this_idle = false;
@@ -143,6 +159,7 @@ impl World {
             self.mouse_still = 0.0;
             self.watch_typing(since_key);
         }
+        if self.shy && moved { self.shy_away() }
         if settings::visit_idle_cursor() && !self.visited_this_idle && self.mouse_still >= IDLE_CURSOR_DELAY {
             let nearest = (0..self.pets.len())
                 .filter(|&i| !matches!(self.pets[i].activity, Dragged | Falling))
@@ -165,6 +182,7 @@ impl World {
     /// How high above the window's bottom edge (points) anything is or is about to be drawn;
     /// infinite when a pet may go anywhere (dragged, visiting the cursor, giving a heads-up).
     pub fn headroom(&self) -> f64 {
+        if self.laser { return f64::INFINITY }
         let mut top: f64 = 0.0;
         for p in &self.pets {
             if matches!(p.activity, Dragged | VisitCursor | Remind) || p.floor > 0.0 { return f64::INFINITY }
@@ -183,13 +201,15 @@ impl World {
     pub fn perching(&self) -> bool { self.pets.iter().any(|p| p.perched.is_some() || p.perch_pending.is_some()) }
 
     pub fn is_fast(&self) -> bool {
-        !self.balls.is_empty()
+        self.laser
+            || !self.balls.is_empty()
             || !self.butterflies.is_empty()
             || self.pets.iter().any(|p| matches!(p.activity, Dragged | Falling | Hop) || p.leaping || !p.on_ground() || p.vx.abs() > 50.0 * self.s)
     }
 
     pub fn is_calm(&self) -> bool {
-        self.balls.is_empty()
+        !self.laser
+            && self.balls.is_empty()
             && self.butterflies.is_empty()
             && self.particles.is_empty()
             && self.pets.iter().all(|p| p.activity.is_calm() && p.vx == 0.0)
@@ -214,6 +234,37 @@ impl World {
                     p.vx = 0.0;
                 }
                 p.timer = TYPING_PAUSE - since;
+            });
+        }
+    }
+
+    /// A pet the moving cursor comes near scampers off to the far side of it. One with its back to the edge
+    /// of its range stays put instead, so it can still be caught, petted and right-clicked.
+    fn shy_away(&mut self) {
+        let m = self.mouse;
+        for i in 0..self.pets.len() {
+            self.with_pet(i, |w, p| {
+                if p.leaping || p.climbing || unflappable(p.activity) || !p.can_move() { return }
+                let r = w.pet_rect(p);
+                let gap = (r.min_x() - m.x).max(m.x - r.max_x()).max(0.0).hypot((r.min_y() - m.y).max(m.y - r.max_y()).max(0.0));
+                if gap > SHY_DISTANCE * w.s { return }
+                let away = if p.x >= m.x { 1.0 } else { -1.0 };
+                // Already running from it.
+                if p.commanded && matches!(p.activity, Run | Walk) && p.target_x.is_some_and(|t| (t - m.x) * away > 0.0) { return }
+                let x = w.clamp_x(p, m.x + away * (p.size.width / 2.0 + SHY_RUN * w.s), p.size.width / 2.0);
+                if (x - p.x) * away < 10.0 {
+                    // Cornered: it stops and faces the cursor rather than walk into it.
+                    if p.vx * away < 0.0 {
+                        w.start(p, if p.supports(Sit) { Sit } else { Idle }, false);
+                        p.vx = 0.0;
+                        p.facing = -away;
+                    }
+                    return;
+                }
+                w.start(p, if p.supports(Run) { Run } else { Walk }, true);
+                p.target_x = Some(x);
+                if p.activity == Run { p.step = 5 } // so the run ends on arrival instead of doing laps
+                if chance(0.25) { p.say(p.species.line("Eek! 🙀", "Can't catch me! 🐾"), 1.6) }
             });
         }
     }

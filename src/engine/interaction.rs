@@ -57,7 +57,7 @@ impl World {
                     w.start(p, Hide, false);
                 } else if !on && p.activity == Hide {
                     w.start(p, Idle, false);
-                    p.say(if w.sharing { "Done sharing? 🐾" } else { "Is it over? 🍿" }, 2.0);
+                    p.say(if w.tucked { "I'm back! 🐾" } else if w.sharing { "Done sharing? 🐾" } else { "Is it over? 🍿" }, 2.0);
                 }
             });
         }
@@ -95,8 +95,8 @@ impl World {
                     p.step = 1;
                 }
             }
-            // Peeking out of the corner, or out of sight altogether while the screen is shared.
-            _ => p.sink = if self.sharing { 1.0 } else { (p.sink - dt / 0.5).max(0.5) },
+            // Peeking out of the corner, or out of sight altogether while the screen is shared or the user put pets away.
+            _ => p.sink = if self.sharing || self.tucked { 1.0 } else { (p.sink - dt / 0.5).max(0.5) },
         }
     }
 }

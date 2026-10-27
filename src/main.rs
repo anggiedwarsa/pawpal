@@ -13,7 +13,7 @@ mod testing;
 
 use std::path::Path;
 
-use data::{clip_importer, sheet_importer};
+use data::{clip_importer, pet_share, sheet_importer, skin};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -29,6 +29,12 @@ fn main() {
         let spec = sheet_importer::parse(&args[i + 3]);
         let result = sheet_importer::import_sheet(Path::new(&args[i + 1]), &args[i + 2], &spec, args.get(i + 4).map(String::as_str));
         finish(result);
+    }
+
+    // `pawpal --import-pet Mochi.pawpal` adds a pet a friend shared.
+    if let Some(i) = args.iter().position(|a| a == "--import-pet").filter(|i| i + 1 < args.len()) {
+        let result = pet_share::import(Path::new(&args[i + 1]), &skin::root());
+        finish(result.map(|name| format!("Imported {name}. Adopt it from ➕ Adopt / Import a Pet in the 🐾 menu.")));
     }
 
     app::run();

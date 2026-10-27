@@ -79,8 +79,31 @@ fn upcoming_reminders_are_listed_soonest_first_and_cancel_when_chosen() {
 #[test]
 fn settings_are_all_in_one_submenu() {
     let t = titles(&settings_items(Some(true)));
-    for s in ["Size", "Walk Area", "Free Will (auto activities)", "🌙 Bedtime", "🎵 Dance to Music", "✨ Seasonal Touches", "🧘 Break Reminders", "📞 Focus During Calls", "Launch at Login"] {
+    for s in ["Size", "Walk Area", "Free Will (auto activities)", "🙈 Avoid My Cursor", "🌙 Bedtime", "🎵 Dance to Music", "✨ Seasonal Touches", "🧘 Break Reminders", "📞 Focus During Calls", "Launch at Login", "Check for Updates"] {
         assert!(t.contains(&s.to_string()), "{s} is in Settings");
     }
     assert!(!titles(&settings_items(None)).contains(&"Launch at Login".to_string()), "only where it can be set");
+}
+
+#[test]
+fn pets_can_be_hidden_for_a_while_and_brought_back() {
+    let Node::Sub { title, children } = hide_items(false, Some("⌃⌥P")) else { panic!("a submenu of how long") };
+    assert_eq!(title, "🙈 Hide Pets  (⌃⌥P)");
+    assert_eq!(
+        children,
+        vec![
+            item("For 15 Minutes", Command::HidePets(Some(15))),
+            item("For 1 Hour", Command::HidePets(Some(60))),
+            item("Until I Bring Them Back", Command::HidePets(None)),
+        ]
+    );
+    assert_eq!(hide_items(true, None), item("🐾 Bring Pets Back", Command::ShowPets), "no shortcut, no hint");
+}
+
+#[test]
+fn a_pet_with_clips_can_be_shared() {
+    let p = Pet::new(1, "Mochi".into(), Species::Cat, Some(skin(&["sit"])));
+    assert!(pet_menu(&p).contains(&item("📤 Share Test…", Command::Share("Test".into()))));
+    let bare = Pet::new(2, "Ghost".into(), Species::Cat, None);
+    assert!(!titles(&pet_menu(&bare)).iter().any(|t| t.starts_with("📤")));
 }

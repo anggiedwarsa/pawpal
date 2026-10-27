@@ -7,6 +7,8 @@ fn missing_keys_take_defaults() {
     let p: Prefs = serde_json::from_str(r#"{"walkArea":"screen"}"#).unwrap();
     assert_eq!((p.scale, p.auto, p.walk_area), (1.1, true, WalkArea::Screen));
     assert!(p.pets.is_empty() && p.asked_accessibility.is_none());
+    assert!(!p.avoid_cursor, "pets don't run from the cursor unless asked");
+    assert!(p.check_updates, "updates are looked for unless turned off");
 }
 
 #[test]

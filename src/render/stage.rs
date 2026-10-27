@@ -198,6 +198,7 @@ impl Stage {
 
         // Bowls are drawn in front of the pets, so an eating pet's face dips into its bowl.
         for b in &world.bowls { self.draw_bowl(b, world) }
+        if world.laser { self.draw_laser(world.mouse, world) }
         self.canvas.flush();
         true
     }
@@ -351,6 +352,7 @@ fn scene_key(pets: &[PetDraw], world: &World) -> String {
         if let (Some(text), true) = (&p.bubble, p.sink < 0.5) { let _ = write!(k, "{text} {:.1} {:.1}|", p.x, world.bubble_y(p)); }
     }
     for b in &world.bowls { let _ = write!(k, "bowl {:.1} {:.1} {:.2}|", b.x, b.floor, b.food); }
+    if world.laser { let _ = write!(k, "laser {:.1} {:.1}|", world.mouse.x, world.mouse.y); }
     k
 }
 

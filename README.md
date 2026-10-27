@@ -28,6 +28,12 @@ chases balls and butterflies, eats from its bowl and keeps you company while you
 - **Seasonal touches**: every few minutes a little flurry drifts down over the Dock: snow in December and January, leaves in October and November, blossoms in April, bats and pumpkins on Halloween and confetti on New Year's Eve (seasons follow the northern hemisphere). Turn it off with ✨ Seasonal Touches under ⚙️ Settings.
 - **Keeps out of your way**: while you type, pets sit and watch, and move away from the text you're typing (exactly where the OS reports the caret, otherwise around the front window).
 - **Click-through**: clicks pass to the apps underneath unless the cursor is over a pet or a toy.
+- **Shy mode**: turn on 🙈 Avoid My Cursor under ⚙️ Settings and pets scamper off whenever the cursor comes near. A pet with its back to the edge stops and stares, so you can still catch it.
+- **Hide pets for a while**: tray menu → 🙈 Hide Pets for 15 minutes, an hour, or until you bring them back. They duck into the corner out of sight (handy before a screenshot or a demo). **⌃⌥P** on a Mac, **Ctrl+Alt+P** on Windows and Linux, hides them or brings them back from anywhere. Calendar heads-ups and your own reminders still come through.
+- **Pets together**: with two or more pets, a tired pet joins a friend that's gone to bed and they nap side by side (💕), one walks over and grooms a friend that's sitting still, and one tags along behind a friend out for a walk.
+- **Laser pointer**: tray menu → 🔴 Laser Pointer puts a red dot at your cursor. Pets dash after it, creep up, pounce, and hop up or down the screen to follow. It switches itself off after a minute of the cursor not moving.
+- **Share your pet**: right-click a pet → 📤 Share… saves it as one `.pawpal` file. A friend picks ➕ Adopt / Import a Pet → Import a Shared Pet (.pawpal)… and your cat moves in on their screen too. Only the pet's clips go in the file.
+- **Update check**: once a day PawPal asks GitHub whether a newer release is out; if one is, ⬆️ Update to PawPal… appears in the tray menu, and About PawPal… offers the download. About PawPal… → Check for Updates looks right away. Turn it off with Check for Updates under ⚙️ Settings.
 - **Tray menu**: feed, give treats, throw a ball, release a butterfly, pick activities, set reminders and focus. Everything you set once (size, walk area, bedtime, break reminders, launch at login…) is together under ⚙️ Settings.
 
 ## Platform support
@@ -89,6 +95,7 @@ Command line:
 ```sh
 pawpal --import clip.mp4 "My Cat" walk
 pawpal --import-sheet sheet.png "My Cat" "walk=9@10/30,sit=0@5" ["Art by …"]
+pawpal --import-pet Mochi.pawpal
 ```
 
 Clips are stored in `<data dir>/PawPal/Skins/<pet>/<action>/` (on macOS, `~/Library/Application Support/PawPal/Skins`).

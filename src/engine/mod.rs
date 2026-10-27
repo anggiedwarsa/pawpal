@@ -1,6 +1,7 @@
 //! The simulation: how pets behave and how toys move. Knows nothing about drawing or the OS.
 
 mod behavior;
+mod buddies;
 pub mod alarms;
 pub mod battery;
 pub mod breaks;
@@ -8,6 +9,7 @@ pub mod calendar;
 pub mod focus;
 pub mod greet;
 mod interaction;
+pub mod laser;
 mod perch;
 mod props_physics;
 pub mod rhythm;
