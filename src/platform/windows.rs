@@ -279,3 +279,14 @@ pub fn audio_playing() -> bool {
         got >= 0 && peak > 0.001
     }
 }
+
+/// The battery's charge (percent) and whether it's on the charger; None without a battery.
+pub fn battery() -> Option<(f64, bool)> {
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut s: SYSTEM_POWER_STATUS = unsafe { std::mem::zeroed() };
+    // SAFETY: fills in the struct passed to it.
+    if unsafe { GetSystemPowerStatus(&mut s) } == 0 { return None }
+    // 128: no battery; 255: unknown.
+    if s.BatteryFlag & 128 != 0 || s.BatteryFlag == 255 || s.BatteryLifePercent > 100 { return None }
+    Some((s.BatteryLifePercent as f64, s.ACLineStatus == 1))
+}

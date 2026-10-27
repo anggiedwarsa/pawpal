@@ -2,6 +2,7 @@
 
 mod behavior;
 pub mod alarms;
+pub mod battery;
 pub mod breaks;
 pub mod calendar;
 pub mod focus;

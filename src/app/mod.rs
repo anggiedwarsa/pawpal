@@ -34,6 +34,7 @@ use crate::data::skin::{self, Skin};
 use crate::domain::Activity::*;
 use crate::domain::{Pet, Species};
 use crate::engine::alarms::{alarm_text, clock_label, parse_when, take_due, Alarm};
+use crate::engine::battery::{battery_text, BatteryWatch};
 use crate::engine::breaks::{nudge_text, BreakTimer};
 use crate::engine::calendar::{heads_up_text, Reminders, REMIND_AT};
 use crate::engine::focus::CallWatch;
@@ -147,6 +148,7 @@ pub struct App {
     calls: CallWatch,
     /// When sound was last heard playing (seconds since the epoch).
     last_sound: f64,
+    battery: BatteryWatch,
     /// The window covers only the strip above the Dock (see COMPACT_HEIGHT).
     compact: bool,
     low_since: Option<Instant>,
@@ -193,6 +195,7 @@ pub fn run() {
         call_focus: false,
         calls: CallWatch::default(),
         last_sound: f64::NEG_INFINITY,
+        battery: BatteryWatch::default(),
         logged_typing: false,
         import_rx: None,
         login_enabled: login_item().and_then(|l| l.is_enabled().ok()),
@@ -394,6 +397,7 @@ impl App {
         if every(10) { self.watch_typing(every(30)) }
         if every(90) { self.watch_calls() }
         if every(60) { self.listen() }
+        if every(1800) { self.check_battery() }
         if every(150) {
             self.check_calendar();
             self.check_alarms();
@@ -529,6 +533,13 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// Every minute: a pet asks for the charger at 10% and 5% battery (it waits while another heads-up is out).
+    fn check_battery(&mut self) {
+        if self.world.pets.is_empty() || self.world.pets.iter().any(|p| p.activity == Remind) { return }
+        let Some((percent, charging)) = platform::battery() else { return };
+        if let Some(mark) = self.battery.due(percent, charging) { self.world.remind(&battery_text(mark)) }
     }
 
     /// Every couple of seconds: whether music is playing. A call's sound doesn't count, and music counts as

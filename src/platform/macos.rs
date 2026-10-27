@@ -67,6 +67,13 @@ extern "C" {
     fn AudioObjectGetPropertyData(id: u32, addr: *const AudioAddress, qual_size: u32, qual: *const c_void, size: *mut u32, data: *mut c_void) -> i32;
 }
 
+#[link(name = "IOKit", kind = "framework")]
+extern "C" {
+    fn IOPSCopyPowerSourcesInfo() -> CFTypeRef;
+    fn IOPSCopyPowerSourcesList(info: CFTypeRef) -> CFArrayRef;
+    fn IOPSGetPowerSourceDescription(info: CFTypeRef, source: CFTypeRef) -> CFDictionaryRef;
+}
+
 // Core Media IO (cameras) uses the same property addresses as Core Audio.
 #[link(name = "CoreMediaIO", kind = "framework")]
 extern "C" {
@@ -618,3 +625,25 @@ pub fn in_call() -> bool { mic_in_use() || camera_in_use() || meeting_window_ope
 
 /// Some app is playing sound.
 pub fn audio_playing() -> bool { audio_busy(b"dOut") }
+
+/// The internal battery's charge (percent) and whether it's on the charger; None without a battery.
+pub fn battery() -> Option<(f64, bool)> {
+    // SAFETY: the info and list are owned here (create rule); descriptions belong to the info, which outlives them.
+    let info = unsafe { IOPSCopyPowerSourcesInfo() };
+    if info.is_null() { return None }
+    let info = unsafe { CFType::wrap_under_create_rule(info) };
+    let list = unsafe { IOPSCopyPowerSourcesList(info.as_CFTypeRef()) };
+    if list.is_null() { return None }
+    let list: CFArray<CFType> = unsafe { CFArray::wrap_under_create_rule(list) };
+    list.iter().find_map(|source| {
+        let d = unsafe { IOPSGetPowerSourceDescription(info.as_CFTypeRef(), source.as_CFTypeRef()) };
+        if d.is_null() { return None }
+        let d: CFDictionary<CFString, CFType> = unsafe { CFDictionary::wrap_under_get_rule(d) };
+        let get = |k: &'static str| d.find(&CFString::from_static_string(k));
+        let text = |k| get(k).and_then(|v| v.downcast::<CFString>()).map(|s| s.to_string());
+        if text("Type").as_deref() != Some("InternalBattery") { return None }
+        let num = |k| get(k).and_then(|v| v.downcast::<CFNumber>()).and_then(|n| n.to_f64());
+        let (now, max) = (num("Current Capacity")?, num("Max Capacity").filter(|&m| m > 0.0)?);
+        Some((now / max * 100.0, text("Power Source State").as_deref() == Some("AC Power")))
+    })
+}

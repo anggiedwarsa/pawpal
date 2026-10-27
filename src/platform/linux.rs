@@ -182,3 +182,13 @@ pub fn in_call() -> bool { alsa_running('c') || meeting_window_open() }
 
 /// Some app is playing sound.
 pub fn audio_playing() -> bool { alsa_running('p') }
+
+/// The battery's charge (percent) and whether it's on the charger; None without a battery.
+pub fn battery() -> Option<(f64, bool)> {
+    std::fs::read_dir("/sys/class/power_supply").ok()?.flatten().find_map(|e| {
+        let read = |f: &str| std::fs::read_to_string(e.path().join(f)).ok().map(|s| s.trim().to_string());
+        if read("type")?.as_str() != "Battery" { return None }
+        let percent: f64 = read("capacity")?.parse().ok()?;
+        Some((percent, read("status")?.as_str() != "Discharging"))
+    })
+}
