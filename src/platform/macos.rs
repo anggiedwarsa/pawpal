@@ -41,6 +41,7 @@ extern "C" {
     fn AXUIElementCreateSystemWide() -> AXUIElementRef;
     fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
     fn AXUIElementCopyAttributeValue(el: AXUIElementRef, attr: CFStringRef, value: *mut CFTypeRef) -> i32;
+    fn AXUIElementSetAttributeValue(el: AXUIElementRef, attr: CFStringRef, value: CFTypeRef) -> i32;
     fn AXUIElementCopyParameterizedAttributeValue(el: AXUIElementRef, attr: CFStringRef, param: CFTypeRef, value: *mut CFTypeRef) -> i32;
     fn AXUIElementGetTypeID() -> CFTypeID;
     fn AXValueGetTypeID() -> CFTypeID;
@@ -63,6 +64,8 @@ thread_local! {
     static SCALE: Cell<f64> = const { Cell::new(2.0) };
     /// The app that was in front before the user grabbed a pet, so it can get focus back.
     static PREVIOUS_APP: Cell<i32> = const { Cell::new(0) };
+    /// Apps already asked to expose their web content to Accessibility (see `wake_web_accessibility`).
+    static WOKEN: std::cell::RefCell<Vec<i32>> = const { std::cell::RefCell::new(Vec::new()) };
     static DOCK_ESTIMATE: Cell<Option<(Instant, Option<f64>)>> = const { Cell::new(None) };
     /// Ghostty doesn't report its caret, so it is followed from how the screen text changes.
     static TERMINAL: std::cell::RefCell<super::TerminalTracker> =
@@ -409,8 +412,21 @@ pub fn done_interacting() {
 pub fn note_frontmost() {
     if let Some(app) = NSWorkspace::sharedWorkspace().frontmostApplication() {
         let pid = app.processIdentifier();
-        if pid != std::process::id() as i32 { PREVIOUS_APP.with(|c| c.set(pid)) }
+        if pid != std::process::id() as i32 {
+            PREVIOUS_APP.with(|c| c.set(pid));
+            wake_web_accessibility(pid);
+        }
     }
+}
+
+/// Chrome and Electron apps (WhatsApp Web, Slack…) build the Accessibility tree of their web pages, and so
+/// report the text cursor, only once an assistive app asks with AXManualAccessibility. Other apps ignore it.
+fn wake_web_accessibility(pid: i32) {
+    if WOKEN.with(|w| w.borrow().contains(&pid)) || !accessibility_trusted() { return }
+    WOKEN.with(|w| w.borrow_mut().push(pid));
+    let app = Owned(unsafe { AXUIElementCreateApplication(pid) });
+    let attr = CFString::from_static_string("AXManualAccessibility");
+    unsafe { AXUIElementSetAttributeValue(app.0, attr.as_concrete_TypeRef(), CFBoolean::true_value().as_CFTypeRef()) };
 }
 
 pub fn show_context_menu(window: &Window, menu: &tray_icon::menu::Menu) {
