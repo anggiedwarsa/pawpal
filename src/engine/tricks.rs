@@ -76,11 +76,11 @@ impl World {
     pub fn trick(&mut self, p: &mut Pet, t: Trick) -> bool {
         if !p.supports(t.activity()) { return false }
         if p.energy <= SLEEPY {
-            p.say(p.species.line("*too sleepy…* 😴", "*yawns* Too tired… 😴"), 2.6);
+            p.say(p.line("too_sleepy", "*too sleepy…* 😴", "*yawns* Too tired… 😴"), 2.6);
             return false;
         }
         if p.happiness <= GRUMPY {
-            p.say(p.species.line("*ignores you* 😼", "*sighs* Not now… 😔"), 2.6);
+            p.say(p.line("not_now", "*ignores you* 😼", "*sighs* Not now… 😔"), 2.6);
             return false;
         }
         self.start(p, t.activity(), true);
@@ -97,7 +97,7 @@ impl World {
         p.trick = false;
         p.happiness = (p.happiness + PROUD).min(100.0);
         self.emit("⭐", self.head_point(p), 14.0);
-        p.say(p.species.line("Ta-da! ✨", "Did I do good? ✨"), 2.6);
+        p.say(p.line("trick_done", "Ta-da! ✨", "Did I do good? ✨"), 2.6);
     }
 }
 

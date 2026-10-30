@@ -30,6 +30,7 @@ use import_flow::ImportMsg;
 use menus::{Command, Node};
 use pointer::Pointer;
 
+use crate::data::pet_file;
 use crate::data::settings::{self, PetSave};
 use crate::data::skin::{self, Skin};
 use crate::data::updates::{self, Release};
@@ -839,6 +840,12 @@ impl App {
             Command::CancelAlarm(id) => settings::set_alarms(settings::alarms().into_iter().filter(|a| a.id != id).collect()),
             Command::Rename(id) => self.rename(id),
             Command::Flip(name) => settings::toggle_flipped(&name),
+            Command::RemindPose { skin: name, clip } => {
+                match pet_file::update(&skin::root().join(&name), |pet| pet.remind = clip) {
+                    Ok(()) => self.reload_skins(),
+                    Err(e) => { platform::alert("Couldn't save the reminder pose", &e, &["OK"], true); }
+                }
+            }
             Command::Coat { pet, coat } => {
                 self.world.with_id(pet, |w, p| {
                     if p.coat == coat { return }
@@ -915,17 +922,30 @@ impl App {
         self.save_pets();
     }
 
-    /// The species a skin declares (species.txt), or else asks the user.
+    /// The species a skin declares (pet.json or species.txt), or else asks the user.
     fn species_for(&self, skin: &str) -> Species {
-        self.skins.get(skin).and_then(|s| s.species).unwrap_or_else(|| Self::ask_species(skin))
+        let Some(k) = self.skins.get(skin) else { return Species::Cat };
+        k.pet.base.unwrap_or_else(|| Self::ask_species(k))
     }
 
-    /// Asks whether a newly adopted pet is a cat or a dog; defaults to Cat if the dialog is dismissed.
-    fn ask_species(skin: &str) -> Species {
-        match platform::alert("PawPal", &format!("Is {skin} a cat or a dog?"), &["🐱 Cat", "🐶 Dog"], false) {
-            Some(1) => Species::Dog,
-            _ => Species::Cat,
-        }
+    /// Asks what kind of animal a newly adopted pet is: one of the built-in species, or a new kind
+    /// that acts like a cat or a dog. The answer goes in the skin's pet.json so it's asked only once;
+    /// a dismissed dialog means a cat, and is asked again next time.
+    fn ask_species(skin: &Skin) -> Species {
+        let ask = format!("What kind of animal is {}?\nCat, dog, snake, fox, T-rex or dragon — or name a new kind, like “Axolotl”.", skin.name);
+        let Some(Some(answer)) = platform::prompt_text("PawPal", &ask, "Cat").map(|a| pet_file::kind_from(&a)) else { return Species::Cat };
+        let (species, kind) = match answer {
+            Ok(species) => (species, None),
+            Err(kind) => {
+                let like = platform::alert("PawPal", &format!("Does a {kind} act more like a cat or a dog?"), &["🐱 Like a cat", "🐶 Like a dog"], false);
+                (if like == Some(1) { Species::Dog } else { Species::Cat }, Some(kind))
+            }
+        };
+        let _ = pet_file::update(&skin::root().join(&skin.name), |pet| {
+            pet.base = Some(species);
+            if kind.is_some() { pet.kind = kind }
+        });
+        species
     }
 
     fn add_pet(&mut self, s: PetSave) -> u64 {

@@ -104,11 +104,11 @@ impl World {
     }
 
     /// The game's over: both make up with a happy word and a heart.
-    fn game_over(&mut self, p: &mut Pet, line: &'static str) {
+    fn game_over(&mut self, p: &mut Pet, key: &str, cat: &str, dog: &str) {
         if p.buddy.take().is_none() { return }
         p.vx = 0.0;
         p.happiness = (p.happiness + 10.0).min(100.0);
-        p.say(line, 2.4);
+        p.say(p.line(key, cat, dog), 2.4);
         self.emit("💖", self.head_point(p), 14.0);
     }
 
@@ -116,11 +116,11 @@ impl World {
 
     pub(super) fn play_tag(&mut self, p: &mut Pet) {
         let s = self.s;
-        if p.timer <= 0.0 { return self.game_over(p, p.species.line("That was fun! ♥", "Again! Again! ♥")) }
+        if p.timer <= 0.0 { return self.game_over(p, "tag_over", "That was fun! ♥", "Again! Again! ♥") }
         if p.step == APPROACH {
             if self.invite(p, PlayFriend, RUN_AWAY, CHASE) {
                 self.emit("💕", self.head_point(p), 14.0);
-                p.say(p.species.line("Tag! You're it!", "Play with me!!"), 2.6);
+                p.say(p.line("tag", "Tag! You're it!", "Play with me!!"), 2.6);
                 p.vy = 220.0 * s;
             }
             return;
@@ -172,10 +172,10 @@ impl World {
 
     pub(super) fn play_fight(&mut self, p: &mut Pet) {
         let s = self.s;
-        if p.timer <= 0.0 { return self.game_over(p, p.species.line("Good match! 🤝", "Hehe, you win~ ♥")) }
+        if p.timer <= 0.0 { return self.game_over(p, "fight_over", "Good match! 🤝", "Hehe, you win~ ♥") }
         if p.step == APPROACH {
             if self.invite(p, PlayFight, SQUARE_OFF, SQUARE_OFF) {
-                p.say(p.species.taunt(), 2.0);
+                p.say(p.line_or("taunt", p.species.taunt()), 2.0);
                 self.emit("💢", self.head_point(p), 14.0);
                 p.cooldown = 0.6;
                 let first = p.buddy;
@@ -402,7 +402,7 @@ impl World {
             }
             if p.fx <= 0.0 {
                 p.fx = 1.3;
-                p.say(pick(p.species.sounds()), 1.0);
+                p.say(p.one_of("sounds", p.species.sounds()), 1.0);
             }
             if p.timer < 2.0 {
                 p.step = 2;
@@ -486,7 +486,7 @@ impl World {
         p.timer = rnd(10.0, 18.0);
         (p.vx, p.vy) = (0.0, 0.0);
         p.cruise = clamp(p.floor + rnd(90.0, 220.0) * s, p.floor + 40.0 * s, self.flight_ceiling(p));
-        p.say(pick(&["Up, up and away! 🐉", "Wheee~", "Look, I can fly!"]), 2.0);
+        p.say(p.one_of("fly", &["Up, up and away! 🐉", "Wheee~", "Look, I can fly!"]), 2.0);
         self.emit_with("💨", pt(p.x, self.ground + p.y + 4.0 * s), 15.0, pt(0.0, 10.0 * s), 0.8);
     }
 
@@ -536,6 +536,29 @@ impl World {
                 }
             }
         }
+    }
+
+    // Skills of a pet's own (pet.json)
+
+    /// Starts one of the pet's own skills: it stays put playing the skill's clip for the skill's
+    /// time, with its line, burst and startle as it starts.
+    pub(super) fn begin_skill(&mut self, p: &mut Pet, i: u8) {
+        p.vx = 0.0;
+        let Some(skill) = p.skin.as_ref().and_then(|k| k.pet.skills.get(i as usize)).cloned() else {
+            p.timer = 0.0;
+            return;
+        };
+        p.timer = skill.seconds;
+        if let Some(line) = skill.say.pick() { p.say(line, 2.2) }
+        if let Some(burst) = &skill.burst {
+            let s = self.s;
+            let c = pt(p.x, self.ground + p.y + p.size.height * 0.5);
+            for k in 0..6 {
+                let a = k as f64 * std::f64::consts::PI / 3.0;
+                self.emit_with(burst, c, 14.0, pt(a.cos() * 55.0 * s, a.sin() * 45.0 * s + 20.0 * s), 0.9);
+            }
+        }
+        if skill.startle { self.startle(p, 220.0, false, &["Whoa! 😲", "Eek! 🙀", "Wow!!"]) }
     }
 
     fn poof(&mut self, p: &Pet) {

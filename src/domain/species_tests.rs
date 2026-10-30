@@ -51,4 +51,6 @@ fn dinosaurs_and_dragons_have_their_own_voices() {
     assert!(Species::Dragon.hungry().iter().any(|s| s.contains("gold")));
     assert_eq!(Species::parse("trex"), Some(Species::Trex));
     assert_eq!(Species::parse("Dragon"), Some(Species::Dragon));
+    assert_eq!(Species::parse("T-Rex"), Some(Species::Trex));
+    assert_eq!(Species::parse(" t rex "), Some(Species::Trex));
 }

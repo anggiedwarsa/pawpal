@@ -1,7 +1,8 @@
 //! Sharing pets: a pet's clips packed into one `.pawpal` file (a zip) that a friend can import.
 //!
-//! Inside: `pawpal.json` naming the pet, `credit.txt` and `species.txt` if it has them, and `<action>/clip.json` plus
-//! `<action>/*.png` for each clip, laid out exactly as in the clip library.
+//! Inside: `pawpal.json` naming the pet, `credit.txt`, `species.txt` and `pet.json` if it has them, and
+//! `<action>/clip.json` plus `<action>/*.png` for each clip (its own skills' too), laid out exactly as in
+//! the clip library.
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+use super::pet_file;
 use super::skin::ACTIONS;
 
 pub const EXTENSION: &str = "pawpal";
@@ -32,10 +34,15 @@ pub fn export(skin_dir: &Path, name: &str, out: &Path) -> Result<(), String> {
     zip.start_file("pawpal.json", opts).map_err(|e| fail(&e))?;
     zip.write_all(&manifest).map_err(|e| fail(&e))?;
     let mut files: Vec<String> = Vec::new();
-    for extra in ["credit.txt", "species.txt"] {
+    for extra in ["credit.txt", "species.txt", pet_file::FILE] {
         if skin_dir.join(extra).is_file() { files.push(extra.into()) }
     }
-    for (action, _, _) in ACTIONS {
+    let own: Vec<String> = pet_file::read(skin_dir).skills.into_iter().map(|k| k.clip).collect();
+    let mut folders: Vec<&str> = ACTIONS.iter().map(|a| a.0).collect();
+    for clip in &own {
+        if !folders.contains(&clip.as_str()) { folders.push(clip) }
+    }
+    for action in folders {
         let Ok(entries) = std::fs::read_dir(skin_dir.join(action)) else { continue };
         let mut names: Vec<String> = entries.flatten().filter_map(|e| e.file_name().to_str().map(String::from)).filter(|n| allowed_in_clip(n)).collect();
         names.sort();
@@ -63,10 +70,19 @@ pub fn import(file: &Path, root: &Path) -> Result<String, String> {
         serde_json::from_str(&text).map_err(|_| not_a_pet())?
     };
     let name = unique_name(root, &clean_name(&manifest.name));
+    // The pet's own skills say which other clip folders belong to it.
+    let own: Vec<String> = match zip.by_name(pet_file::FILE) {
+        Ok(f) => {
+            let mut text = String::new();
+            let _ = f.take(256 * 1024).read_to_string(&mut text);
+            serde_json::from_str::<pet_file::PetFile>(&text).map(|p| p.skills.into_iter().map(|k| k.clip).collect()).unwrap_or_default()
+        }
+        Err(_) => Vec::new(),
+    };
 
     // Unpacked next to the library first, and moved in only once complete, so a bad file leaves nothing behind.
     let staging = root.parent().unwrap_or(root).join(format!(".incoming-{}", fastrand::u64(..)));
-    let result = unpack(&mut zip, &staging);
+    let result = unpack(&mut zip, &staging, &own);
     let result = result.and_then(|()| {
         std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
         std::fs::rename(&staging, root.join(&name)).map_err(|e| e.to_string())
@@ -75,13 +91,13 @@ pub fn import(file: &Path, root: &Path) -> Result<String, String> {
     result.map(|()| name)
 }
 
-fn unpack(zip: &mut ZipArchive<File>, into: &Path) -> Result<(), String> {
+fn unpack(zip: &mut ZipArchive<File>, into: &Path, own: &[String]) -> Result<(), String> {
     let mut total = 0u64;
     let mut clips = 0;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| format!("The file is damaged: {e}"))?;
         if entry.is_dir() { continue }
-        let Some(path) = entry.enclosed_name().and_then(|p| place(&p)) else { continue };
+        let Some(path) = entry.enclosed_name().and_then(|p| place(&p, own)) else { continue };
         total += entry.size();
         if total > MAX_TOTAL { return Err("This pet file is too big.".into()) }
         let dest = into.join(&path);
@@ -95,12 +111,15 @@ fn unpack(zip: &mut ZipArchive<File>, into: &Path) -> Result<(), String> {
 }
 
 /// Where an entry goes inside the pet's folder, or None for anything that isn't part of a pet:
-/// only `credit.txt`, `species.txt` and the frames and settings of known actions, never a path leading elsewhere.
-fn place(p: &Path) -> Option<PathBuf> {
+/// only `credit.txt`, `species.txt`, `pet.json` and the frames and settings of clips (built-in actions, or
+/// the `own` clips of its skills, if their folder names are safe), never a path leading elsewhere.
+fn place(p: &Path, own: &[String]) -> Option<PathBuf> {
     let parts: Vec<&str> = p.components().map(|c| match c { Component::Normal(s) => s.to_str(), _ => None }).collect::<Option<_>>()?;
     match parts.as_slice() {
-        [f @ ("credit.txt" | "species.txt")] => Some(PathBuf::from(f)),
-        [action, file] if ACTIONS.iter().any(|a| a.0 == *action) && allowed_in_clip(file) => Some(Path::new(action).join(file)),
+        [f @ ("credit.txt" | "species.txt" | pet_file::FILE)] => Some(PathBuf::from(f)),
+        [action, file] if allowed_in_clip(file) && (ACTIONS.iter().any(|a| a.0 == *action) || (pet_file::is_clip_name(action) && own.iter().any(|o| o == action))) => {
+            Some(Path::new(action).join(file))
+        }
         _ => None,
     }
 }

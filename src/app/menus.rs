@@ -7,9 +7,9 @@ use tray_icon::menu::{CheckMenuItem, IsMenuItem, Menu, MenuId, MenuItem, Predefi
 
 use super::App;
 use crate::data::settings::{self, Todo, WalkArea};
-use crate::data::skin::ACTIONS;
+use crate::data::skin::{Skin, ACTIONS};
 use crate::domain::Activity::{self, *};
-use crate::domain::{Coat, Pet, Species};
+use crate::domain::{Coat, Pet};
 use crate::engine::alarms::{clock_label, Alarm};
 use crate::engine::breaks::BREAK_EVERY;
 use crate::engine::focus::FOCUS_FOR;
@@ -45,7 +45,9 @@ pub enum Command {
     Rename(u64),
     Flip(String),
     Coat { pet: u64, coat: Coat },
-    Import { skin: Option<String>, action: &'static str },
+    /// The clip a pet plays while telling the user about a reminder (None: the usual sit).
+    RemindPose { skin: String, clip: Option<String> },
+    Import { skin: Option<String>, action: String },
     Remove(u64),
     Share(String),
     ImportShared,
@@ -191,8 +193,9 @@ fn clock(h: u32) -> String {
 
 /// Activities, with ones the pet has no clip for greyed out and saying which clip to import.
 /// Special powers only some pets have (transforming, breathing fire) are left out for the others instead.
+/// A single pet's menu ends with its own skills (from its pet.json).
 fn activity_items(pets: &[&Pet]) -> Vec<Node> {
-    Activity::MENU
+    let mut m: Vec<Node> = Activity::MENU
         .iter()
         .filter_map(|&a| {
             let able: Vec<u64> = pets.iter().filter(|p| p.supports(a)).map(|p| p.id).collect();
@@ -203,7 +206,17 @@ fn activity_items(pets: &[&Pet]) -> Vec<Node> {
             }
             Some(item(a.title(), Command::Do { pets: able, activity: a }))
         })
-        .collect()
+        .collect();
+    if let [p] = pets {
+        let own = p.skin.as_ref().map_or(&[][..], |k| &k.pet.skills[..]);
+        if !own.is_empty() { m.push(Node::Sep) }
+        for (i, k) in own.iter().enumerate() {
+            let a = Activity::Skill(i as u8);
+            let name = k.name.trim();
+            m.push(if p.supports(a) { item(name, Command::Do { pets: vec![p.id], activity: a }) } else { note(format!("{name}  — needs a “{}” clip", k.clip)) });
+        }
+    }
+    m
 }
 
 fn bar(v: f64) -> String {
@@ -223,8 +236,30 @@ fn stats_items(p: &Pet) -> Vec<Node> {
     ]
 }
 
-fn import_items(skin: Option<&str>) -> Vec<Node> {
-    ACTIONS.iter().map(|(name, title, _)| item(format!("{title}…"), Command::Import { skin: skin.map(String::from), action: name })).collect()
+/// Every kind of clip, then the clips for the pet's own skills (from its pet.json).
+fn import_items(skin: Option<&Skin>) -> Vec<Node> {
+    let import = |action: &str| Command::Import { skin: skin.map(|k| k.name.clone()), action: action.to_string() };
+    let mut m: Vec<Node> = ACTIONS.iter().map(|(name, title, _)| item(format!("{title}…"), import(name))).collect();
+    let own = skin.map_or(&[][..], |k| &k.pet.skills[..]);
+    let mut seen: Vec<&str> = ACTIONS.iter().map(|a| a.0).collect();
+    for k in own {
+        if seen.contains(&k.clip.as_str()) { continue }
+        seen.push(&k.clip);
+        if m.len() == ACTIONS.len() { m.push(Node::Sep) }
+        m.push(item(format!("{}…", k.name.trim()), import(&k.clip)));
+    }
+    m
+}
+
+/// What the pet does while telling the user about a reminder: any clip it stands still for.
+fn remind_items(skin: &Skin) -> Vec<Node> {
+    let chosen = skin.pet.remind.as_deref().filter(|c| skin.clips.contains_key(*c));
+    let pose = |clip: Option<&str>| Command::RemindPose { skin: skin.name.clone(), clip: clip.map(String::from) };
+    let mut m = vec![check("Sit (usual)", chosen.is_none(), pose(None))];
+    for name in skin.clips.keys().filter(|n| !matches!(n.as_str(), "walk" | "run" | "jump" | "sit")) {
+        m.push(check(skin.clip_title(name), chosen == Some(name.as_str()), pose(Some(name))));
+    }
+    m
 }
 
 /// Tricks, with ones the pet has no clip for greyed out and saying which clip to import.
@@ -248,12 +283,14 @@ pub fn pet_menu(p: &Pet) -> Vec<Node> {
     m.push(item("🍗 Feed", Command::FeedPet(p.id)));
     m.push(item("✏️ Rename…", Command::Rename(p.id)));
     if let Some(skin) = &p.skin {
+        if let Some(kind) = &skin.pet.kind { m.push(note(format!("🐾 {kind}"))) }
         if let Some(credit) = &skin.credit { m.push(note(credit.trim())) }
         m.push(item("↔️ Flip Direction", Command::Flip(skin.name.clone())));
-        if p.species == Species::Dragon {
+        if p.recolor().is_some() {
             m.push(sub("🎨 Color", Coat::ALL.iter().map(|&c| check(c.title(), p.coat == c, Command::Coat { pet: p.id, coat: c })).collect()));
         }
-        m.push(sub(format!("➕ Add a Clip for {}", skin.name), import_items(Some(&skin.name))));
+        m.push(sub("📅 Reminder Pose", remind_items(skin)));
+        m.push(sub(format!("➕ Add a Clip for {}", skin.name), import_items(Some(skin))));
         m.push(item(format!("📤 Share {}…", skin.name), Command::Share(skin.name.clone())));
     }
     m.push(item("👋 Say Goodbye (Remove)", Command::Remove(p.id)));

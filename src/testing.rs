@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::data::pet_file::PetFile;
 use crate::data::skin::{Clip, Skin};
 use crate::domain::{Pet, Species};
 use crate::engine::World;
@@ -21,10 +22,16 @@ pub fn clip(name: &str) -> Clip {
     }
 }
 
-pub fn skin(clips: &[&str]) -> Rc<Skin> {
+pub fn skin(clips: &[&str]) -> Rc<Skin> { skin_with(clips, PetFile::default()) }
+
+/// A skin with these clips and this pet.json.
+pub fn skin_with(clips: &[&str], pet: PetFile) -> Rc<Skin> {
     let clips: BTreeMap<String, Clip> = clips.iter().map(|n| (n.to_string(), clip(n))).collect();
-    Rc::new(Skin { name: "Test".into(), clips, credit: None, species: None })
+    Rc::new(Skin { name: "Test".into(), clips, credit: None, pet })
 }
+
+/// A pet.json from its JSON.
+pub fn pet_file(json: &str) -> PetFile { serde_json::from_str(json).unwrap() }
 
 /// A skin with every clip, so a pet can do anything.
 pub fn full_skin() -> Rc<Skin> {

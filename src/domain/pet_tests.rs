@@ -39,3 +39,28 @@ fn saying_something_shows_a_bubble_for_a_while() {
     p.say("hi", 2.0);
     assert_eq!((p.bubble.as_deref(), p.bubble_ttl), (Some("hi"), 2.0));
 }
+
+#[test]
+fn a_pet_says_its_own_lines_and_borrows_the_rest_from_its_species() {
+    use crate::testing::{pet_file, skin_with};
+    let own = pet_file(r#"{ "lines": { "hello": "Blub! 👋", "sounds": ["Blub"], "yum": "Nom" } }"#);
+    let p = Pet::new(1, "Bloop".into(), Species::Dog, Some(skin_with(&["walk"], own)));
+    assert_eq!(p.line_or("hello", "Hi"), "Blub! 👋");
+    assert_eq!(p.line_or("taunt", "Grr"), "Grr");
+    assert_eq!(p.one_of("sounds", &["Woof"]), "Blub");
+    assert_eq!(p.one_of("hungry", &["Food?"]), "Food?");
+    assert_eq!(p.line("yum", "cat", "dog"), "Nom");
+    assert_eq!(p.line("cuddle", "cat", "dog"), "dog", "the dog line, since it's based on a dog");
+    let bare = Pet::new(2, "Mochi".into(), Species::Cat, None);
+    assert_eq!(bare.line("yum", "cat", "dog"), "cat");
+}
+
+#[test]
+fn which_colours_change_comes_from_the_pet_file_or_dragon_scales() {
+    use crate::testing::{pet_file, skin_with};
+    let teal = pet_file(r#"{ "recolor": { "hue": 180, "band": 12 } }"#);
+    let p = Pet::new(1, "Teal".into(), Species::Cat, Some(skin_with(&["walk"], teal)));
+    assert_eq!(p.recolor(), Some(Recolor { hue: 180.0, band: 12.0 }));
+    assert_eq!(Pet::new(2, "Naga".into(), Species::Dragon, Some(skin(&["walk"]))).recolor(), Some(Recolor::LAVENDER));
+    assert_eq!(Pet::new(3, "Mochi".into(), Species::Cat, Some(skin(&["walk"]))).recolor(), None);
+}

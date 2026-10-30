@@ -407,3 +407,31 @@ fn bedtime_beats_music() {
     w.with_pet(0, |w, p| w.choose_next(p));
     assert_eq!(w.pets[0].activity, Sleep);
 }
+
+#[test]
+fn free_will_picks_a_pets_own_skills_and_any_pet_can_transform() {
+    use crate::testing::{pet_file, skin_with};
+    let mut w = world(1);
+    let own = pet_file(r#"{ "skills": [{ "name": "Bubbles", "clip": "bubbles", "often": 5 }, { "name": "Never", "clip": "never", "often": 0 }] }"#);
+    w.pets[0].skin = Some(skin_with(&["bubbles", "never", "transform"], own));
+    let mut seen = Vec::new();
+    for _ in 0..300 {
+        w.with_pet(0, |w, p| w.choose_next(p));
+        seen.push(w.pets[0].activity);
+    }
+    assert!(seen.contains(&Skill(0)), "picked on its own");
+    assert!(!seen.contains(&Skill(1)), "an `often` of 0 is for the menu only");
+    assert!(seen.contains(&Transform), "a cat with a transform clip transforms too");
+}
+
+#[test]
+fn a_pets_own_lines_are_what_it_says() {
+    use crate::testing::{pet_file, skin_with};
+    let mut w = world(1);
+    let own = pet_file(r#"{ "lines": { "knead": "*squish squish*", "petted": "Blub ♥", "hello": "Hai!" } }"#);
+    w.pets[0].skin = Some(skin_with(&["walk", "knead", "petted", "idle"], own));
+    w.with_pet(0, |w, p| w.start(p, Knead, true));
+    assert_eq!(w.pets[0].bubble.as_deref(), Some("*squish squish*"));
+    w.with_pet(0, |w, p| w.start(p, Petted, true));
+    assert_eq!(w.pets[0].bubble.as_deref(), Some("Blub ♥"));
+}

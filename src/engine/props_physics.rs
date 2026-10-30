@@ -73,7 +73,7 @@ impl World {
             self.with_pet(i, |w, p| {
                 p.hunger = (p.hunger - 15.0).max(0.0);
                 p.happiness = (p.happiness + 8.0).min(100.0);
-                w.emit(p.species.line("🐟", "🦴"), w.head_point(p), 14.0);
+                w.emit(&p.line("treat", "🐟", "🦴"), w.head_point(p), 14.0);
                 if p.activity != Dragged { w.start(p, Petted, false) }
                 p.say("Yum! Thank you ♥", 2.6);
             });

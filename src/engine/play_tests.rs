@@ -303,3 +303,41 @@ fn a_pet_busy_with_its_skill_is_left_out_of_games() {
     assert_eq!(w.pets[1].activity, Grow, "the giant cobra isn't dragged into a play fight");
     assert_ne!(w.pets[0].activity, PlayFight);
 }
+
+#[test]
+fn a_pets_own_skill_plays_for_its_time_with_its_line_burst_and_startle() {
+    use crate::testing::{pet_file, skin_with};
+    let mut w = world(2);
+    w.pets[1].x = w.pets[0].x + 120.0;
+    let own = pet_file(r#"{ "skills": [{ "name": "Bubbles", "clip": "bubbles", "seconds": 2, "say": "Blub blub~", "burst": "🫧", "startle": true }] }"#);
+    w.pets[0].skin = Some(skin_with(&["walk", "idle", "bubbles"], own));
+    w.pets[0].vx = 50.0;
+    w.with_pet(0, |w, p| w.start(p, Skill(0), true));
+    let p = &w.pets[0];
+    assert_eq!((p.activity, p.timer, p.vx, p.bubble.as_deref()), (Skill(0), 2.0, 0.0, Some("Blub blub~")));
+    assert_eq!(count(&w, "🫧"), 6);
+    assert!(w.pets[1].vy > 0.0 && w.pets[1].bubble.is_some(), "the friend nearby jumps");
+    run_all(&mut w, 1.0);
+    assert_eq!(w.pets[0].activity, Skill(0));
+    run_all(&mut w, 1.5);
+    assert_ne!(w.pets[0].activity, Skill(0), "over after its time");
+}
+
+#[test]
+fn a_skill_that_isnt_there_ends_at_once() {
+    let mut w = world(1);
+    w.with_pet(0, |w, p| w.begin_skill(p, 3));
+    assert_eq!(w.pets[0].timer, 0.0);
+    assert!(w.pets[0].bubble.is_none());
+}
+
+#[test]
+fn a_quiet_skill_just_plays_its_clip() {
+    use crate::testing::{pet_file, skin_with};
+    let mut w = world(2);
+    w.pets[1].x = w.pets[0].x + 60.0;
+    w.pets[0].skin = Some(skin_with(&["walk", "bubbles"], pet_file(r#"{ "skills": [{ "name": "B", "clip": "bubbles" }] }"#)));
+    w.with_pet(0, |w, p| w.start(p, Skill(0), true));
+    assert_eq!((w.pets[0].timer, w.particles.len()), (4.0, 0));
+    assert!(w.pets[0].bubble.is_none() && w.pets[1].vy == 0.0);
+}

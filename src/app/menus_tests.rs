@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::domain::{Coat, Species};
-use crate::testing::skin;
+use crate::testing::{pet_file, skin, skin_with};
 
 fn titles(nodes: &[Node]) -> Vec<String> {
     nodes
@@ -47,9 +47,10 @@ fn missing_clips_are_greyed_out_with_a_hint() {
 
 #[test]
 fn every_action_can_be_imported() {
-    let items = import_items(Some("Mochi"));
+    let items = import_items(Some(&skin(&["walk"])));
     assert_eq!(items.len(), ACTIONS.len());
-    assert!(items.contains(&item("Walk…", Command::Import { skin: Some("Mochi".into()), action: "walk" })));
+    assert!(items.contains(&item("Walk…", Command::Import { skin: Some("Test".into()), action: "walk".into() })));
+    assert_eq!(import_items(None).len(), ACTIONS.len());
 }
 
 #[test]
@@ -164,4 +165,55 @@ fn only_dragons_get_a_colour_menu_with_their_coat_ticked() {
     assert_eq!(ticked, vec![Coat::Pink.title().to_string()]);
     let cat = Pet::new(2, "Mochi".into(), Species::Cat, Some(skin(&["walk"])));
     assert!(colours(&cat).is_none());
+}
+
+const BUBBLES: &str = r#"{ "kind": "Axolotl", "skills": [
+    { "name": "🫧 Blow Bubbles", "clip": "bubbles" },
+    { "name": "🌀 Spin", "clip": "spin" },
+    { "name": "🎉 Party", "clip": "meow" }
+] }"#;
+
+#[test]
+fn a_pets_own_skills_end_its_activity_menu() {
+    let p = Pet::new(4, "Bloop".into(), Species::Cat, Some(skin_with(&["walk", "bubbles"], pet_file(BUBBLES))));
+    let items = activity_items(&[&p]);
+    assert!(items.contains(&item("🫧 Blow Bubbles", Command::Do { pets: vec![4], activity: Activity::Skill(0) })));
+    assert!(titles(&items).contains(&"🌀 Spin  — needs a “spin” clip".to_string()));
+    let other = Pet::new(5, "Mochi".into(), Species::Cat, Some(skin(&["walk"])));
+    assert!(titles(&activity_items(&[&p, &other])).iter().all(|t| !t.contains("Bubbles")), "skills aren't shared across pets");
+    assert!(!activity_items(&[&other]).contains(&Node::Sep), "no separator without skills of its own");
+}
+
+#[test]
+fn a_pets_own_skill_clips_can_be_imported() {
+    let k = skin_with(&["walk"], pet_file(BUBBLES));
+    let items = import_items(Some(&k));
+    assert_eq!(items.len(), ACTIONS.len() + 3, "a separator, then bubbles and spin; meow is already there");
+    assert!(items.contains(&item("🫧 Blow Bubbles…", Command::Import { skin: Some("Test".into()), action: "bubbles".into() })));
+}
+
+#[test]
+fn the_kind_of_animal_shows_in_its_menu() {
+    let p = Pet::new(4, "Bloop".into(), Species::Cat, Some(skin_with(&["walk"], pet_file(BUBBLES))));
+    assert!(titles(&pet_menu(&p)).contains(&"🐾 Axolotl".to_string()));
+}
+
+#[test]
+fn the_reminder_pose_lists_still_clips_and_ticks_the_chosen_one() {
+    let pose = |clip: Option<&str>| Command::RemindPose { skin: "Test".into(), clip: clip.map(String::from) };
+    let k = skin_with(&["walk", "run", "jump", "sit", "meow", "bubbles"], pet_file(BUBBLES));
+    let items = remind_items(&k);
+    assert_eq!(items, vec![check("Sit (usual)", true, pose(None)), check("🫧 Blow Bubbles", false, pose(Some("bubbles"))), check("Meow", false, pose(Some("meow")))]);
+    let k = skin_with(&["sit", "meow"], pet_file(r#"{ "remind": "meow" }"#));
+    assert_eq!(remind_items(&k), vec![check("Sit (usual)", false, pose(None)), check("Meow", true, pose(Some("meow")))]);
+    let k = skin_with(&["sit"], pet_file(r#"{ "remind": "gone" }"#));
+    assert_eq!(remind_items(&k)[0], check("Sit (usual)", true, pose(None)), "a missing clip counts as the usual");
+}
+
+#[test]
+fn any_pet_whose_file_says_so_can_change_colour() {
+    let has_colours = |p: &Pet| titles(&pet_menu(p)).contains(&"🎨 Color".to_string());
+    let fox = Pet::new(1, "Teal".into(), Species::Fox, Some(skin_with(&["walk"], pet_file(r#"{ "recolor": { "hue": 180 } }"#))));
+    assert!(has_colours(&fox));
+    assert!(!has_colours(&Pet::new(2, "Plain".into(), Species::Fox, Some(skin(&["walk"])))));
 }

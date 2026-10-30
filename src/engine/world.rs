@@ -85,9 +85,9 @@ pub const SHY_RUN: f64 = 140.0;
 /// Food and toys don't need it: they appear on the level of the pet they're for.
 pub fn on_dock(a: Activity) -> bool { matches!(a, PlayFriend | PlayFight | Herd) }
 /// Activities typing doesn't interrupt.
-fn busy(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | Hop | Sleep | Eat | Peekaboo | Petted | Hide | Remind | Fly | Grow | Vanish | Stomp) }
+fn busy(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | Hop | Sleep | Eat | Peekaboo | Petted | Hide | Remind | Fly | Grow | Vanish | Stomp | Skill(_)) }
 /// Activities a shy pet doesn't break off to run from the cursor.
-fn unflappable(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | ChaseCursor | Hop | Sleep | Peekaboo | Petted | Hide | Remind | Fly | Grow | Vanish | Stomp) }
+fn unflappable(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | ChaseCursor | Hop | Sleep | Peekaboo | Petted | Hide | Remind | Fly | Grow | Vanish | Stomp | Skill(_)) }
 
 impl World {
     pub fn new() -> World {
@@ -267,7 +267,7 @@ impl World {
                 w.start(p, if p.supports(Run) { Run } else { Walk }, true);
                 p.target_x = Some(x);
                 if p.activity == Run { p.step = 5 } // so the run ends on arrival instead of doing laps
-                if chance(0.25) { p.say(p.species.line("Eek! 🙀", "Can't catch me! 🐾"), 1.6) }
+                if chance(0.25) { p.say(p.line("startled", "Eek! 🙀", "Can't catch me! 🐾"), 1.6) }
             });
         }
     }

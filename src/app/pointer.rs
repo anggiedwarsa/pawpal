@@ -63,7 +63,7 @@ impl App {
         self.world.with_id(id, |w, p| {
             if start_drag {
                 w.start(p, Dragged, false);
-                p.say(picked_up_line(p.species), 1.5);
+                p.say(p.line_or("picked_up", picked_up_line(p.species)), 1.5);
             }
             if dragging {
                 // Pets can be carried anywhere on screen, not just along the Dock.

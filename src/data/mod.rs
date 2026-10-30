@@ -2,6 +2,7 @@
 
 pub mod clip_importer;
 pub mod ical;
+pub mod pet_file;
 pub mod pet_share;
 pub mod settings;
 pub mod sheet_importer;

@@ -49,7 +49,7 @@ impl World {
             Lounge => p.timer = rnd(8.0, 18.0),
             Knead => {
                 p.timer = rnd(5.0, 9.0);
-                p.say(p.species.knead(), 2.6);
+                p.say(p.line_or("knead", p.species.knead()), 2.6);
             }
             Sleep => {
                 // Bedtime is in the bottom-right corner of the screen; the nap starts once the pet gets there.
@@ -94,7 +94,7 @@ impl World {
                 p.leap_from = pt(p.x, p.y);
                 p.leap_to = self.perch_point(p);
                 p.leap_time = 0.0;
-                p.say(p.species.line("Ooh, a mouse! 🐭", "Whatcha doing? 👀"), 2.0);
+                p.say(p.line("cursor", "Ooh, a mouse! 🐭", "Whatcha doing? 👀"), 2.0);
             }
             Hop => {
                 p.timer = 4.0;
@@ -109,11 +109,11 @@ impl World {
             Dance => p.timer = 6.0,
             Wave => {
                 p.timer = 3.0;
-                p.say(p.species.hello(), 2.6);
+                p.say(p.line_or("hello", p.species.hello()), 2.6);
             }
             Meow => {
                 p.timer = 2.6;
-                if p.bubble.is_none() { p.say(pick(p.species.sounds()), 2.6) }
+                if p.bubble.is_none() { p.say(p.one_of("sounds", p.species.sounds()), 2.6) }
             }
             Peekaboo => p.timer = 20.0,
             Remind => p.timer = f64::INFINITY,
@@ -125,29 +125,30 @@ impl World {
             Transform => {
                 p.timer = 3.4;
                 self.reveal(p, "Hehe, the real me! 🦊");
-                p.say(pick(&["Transform! 🔥", "Kon… KON!! 🔥", "Watch this~ ✨"]), 2.2);
+                p.say(p.one_of("transform", &["Transform! 🔥", "Kon… KON!! 🔥", "Watch this~ ✨"]), 2.2);
             }
             Fly => self.take_off(p),
             Grow => {
                 p.timer = GROW_TIME;
-                p.say("Sss… behold my true form! 🐍", 2.2);
+                p.say(p.line_or("grow", "Sss… behold my true form! 🐍"), 2.2);
             }
             Herd => {
                 p.timer = HERD_TIME;
-                p.say("Everyone, over here! 🐾", 2.2);
+                p.say(p.line_or("herd", "Everyone, over here! 🐾"), 2.2);
             }
             Vanish => {
                 p.timer = 6.0;
-                p.say("Now you see me… ✨", 1.6);
+                p.say(p.line_or("vanish", "Now you see me… ✨"), 1.6);
             }
             Stomp => {
                 p.timer = STOMP_TIME;
-                p.say("RAAAWR! 🦖", 1.6);
+                p.say(p.line_or("stomp", "RAAAWR! 🦖"), 1.6);
             }
             BreatheFire => {
                 p.timer = FIRE_TIME;
-                p.say("*deep breath*", 1.0);
+                p.say(p.line_or("breathe_fire", "*deep breath*"), 1.0);
             }
+            Skill(i) => self.begin_skill(p, i),
             Petted => {
                 p.timer = 2.2;
                 p.happiness = (p.happiness + 12.0).min(100.0);
@@ -155,7 +156,7 @@ impl World {
                 if p.disguise.is_some() {
                     self.reveal(p, "Hehe, you found me! 🦊");
                 } else {
-                    p.say(pick(p.species.petted()), 2.6);
+                    p.say(p.one_of("petted", p.species.petted()), 2.6);
                 }
             }
             Dragged => p.timer = f64::INFINITY,
@@ -178,7 +179,7 @@ impl World {
             }
             let morning = self.day() == DayPart::Morning;
             self.start(p, if p.supports(Stretch) { Stretch } else { Idle }, false);
-            let yawn = p.species.line("*yaaawn*", "*big yawn*");
+            let yawn = p.line("yawn", "*yaaawn*", "*big yawn*");
             if morning { p.say(format!("{yawn} Good morning! ☀️"), 3.0) } else { p.say(yawn, 2.6) }
             return;
         }
@@ -213,7 +214,7 @@ impl World {
         }
         if self.pets.len() > 1 && self.buddy_up(p) { return }
         if p.hunger > 70.0 && chance(0.35) {
-            p.say(pick(p.species.hungry()), 3.0);
+            p.say(p.one_of("hungry", p.species.hungry()), 3.0);
             let next = if can(Meow) { Meow } else { Idle };
             return self.start(p, next, false);
         }
@@ -225,9 +226,9 @@ impl World {
             (Sleep, if p.energy < 40.0 { 3.0 } else { 0.3 }), (Hop, 1.5), (Stretch, 0.4),
         ];
         if self.pets.len() > 1 { options.extend([(PlayFriend, 1.2), (PlayFight, 0.9)]) }
-        if p.species == Species::Fox { options.push((Transform, 0.6)) }
-        options.extend([(BreatheFire, 0.5), (Fly, 0.6), (Grow, 0.6), (Vanish, 0.6), (Stomp, 0.6)]);
+        options.extend([(Transform, 0.6), (BreatheFire, 0.5), (Fly, 0.6), (Grow, 0.6), (Vanish, 0.6), (Stomp, 0.6)]);
         if self.pets.len() > 1 { options.push((Herd, 0.7)) }
+        if let Some(k) = &skin { options.extend(k.skills().map(|(a, k)| (a, k.often))) }
         options.retain(|o| can(o.0));
         let day = self.day();
         for o in &mut options { o.1 *= weight(day, o.0) }
@@ -421,6 +422,7 @@ impl World {
             Herd => self.herd(p),
             Vanish => self.vanish(p, dt),
             Stomp => self.stomp(p),
+            Skill(_) => p.vx = 0.0,
             Petted => {
                 p.vx = 0.0;
                 if p.fx <= 0.0 {
@@ -507,7 +509,7 @@ impl World {
             p.hunger = (p.hunger - 14.0 * dt).max(0.0);
             p.happiness = (p.happiness + dt).min(100.0);
             if self.bowls[bi].food <= 0.0 {
-                p.say(p.species.line("Yum! 😋", "Delicious!! 😋"), 2.6);
+                p.say(p.line("yum", "Yum! 😋", "Delicious!! 😋"), 2.6);
                 p.timer = 0.0;
             }
         }
@@ -567,7 +569,7 @@ impl World {
             p.y = lerp(p.leap_from.y, p.leap_to.y, e) + (k * std::f64::consts::PI).sin() * (dist * 0.3).min(120.0) * s;
             if k >= 1.0 {
                 p.step = 1;
-                p.say(p.species.line("Found you! ♥", "Hi hi hi! ♥"), 2.0);
+                p.say(p.line("found_you", "Found you! ♥", "Hi hi hi! ♥"), 2.0);
             }
         } else {
             // Sitting beside the idle cursor, keeping it company.
@@ -582,7 +584,7 @@ impl World {
         if p.step == 1 && (p.timer <= 0.0 || moved) {
             self.settle(p);
             self.start(p, if p.supports(Sit) { Sit } else { Idle }, false);
-            p.say(p.species.line("I like it here! 🐾", "Nice spot! 🐾"), 2.0);
+            p.say(p.line("nice_spot", "I like it here! 🐾", "Nice spot! 🐾"), 2.0);
         }
     }
 

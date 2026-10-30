@@ -40,6 +40,8 @@ pub enum Activity {
     Vanish,
     /// A T-rex stomping hard enough to bounce every pet on its level.
     Stomp,
+    /// A skill of the pet's own from its skin's pet.json: the index into its `skills`.
+    Skill(u8),
     Petted,
     Hop,
     /// Peeking from the bottom-right corner while something plays full screen.
@@ -85,6 +87,8 @@ impl Activity {
             Herd => "🐕 Herd Friends",
             Vanish => "✨ Vanish",
             Stomp => "🦖 Earthquake Stomp",
+            // Named in the pet's own pet.json; menus show that name.
+            Skill(_) => "✨ Skill",
             Petted => "🥰 Get Petted",
             Hop => "🪜 Hop Up / Down",
             Hide => "🙈 Hide in the Corner",
@@ -103,7 +107,7 @@ impl Activity {
 
     /// Special powers only some kinds of pet have; menus leave them out for the others rather than
     /// suggesting a clip to import.
-    pub fn is_special(self) -> bool { matches!(self, Transform | BreatheFire | Fly | Grow | Herd | Vanish | Stomp) }
+    pub fn is_special(self) -> bool { matches!(self, Transform | BreatheFire | Fly | Grow | Herd | Vanish | Stomp | Skill(_)) }
 
     /// Quiet activities that can be animated at a lower frame rate.
     pub fn is_calm(self) -> bool {

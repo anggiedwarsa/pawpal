@@ -6,10 +6,12 @@ mod event;
 mod pet;
 mod props;
 mod species;
+mod voice;
 
 pub use activity::Activity;
-pub use coat::Coat;
+pub use coat::{Coat, Recolor};
 pub use event::{CalendarEvent, ClickAction};
 pub use pet::{Pet, Resume};
 pub use props::{same_level, Ball, Bowl, Butterfly, Particle};
 pub use species::Species;
+pub use voice::{Lines, Voice};

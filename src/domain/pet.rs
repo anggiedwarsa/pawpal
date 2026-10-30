@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
-use super::{Activity, ClickAction, Coat, Species};
+use super::{Activity, ClickAction, Coat, Recolor, Species};
 use crate::data::skin::Skin;
-use crate::support::{Point, Size, Span};
+use crate::support::{pick, Point, Size, Span};
 
 /// A pet's state: where it is, what it's doing and how it feels. Rendering lives in the render layer.
 /// What a pet was doing before a calendar heads-up, and where, so it can go back to it.
@@ -121,6 +121,23 @@ impl Pet {
     pub fn say(&mut self, text: impl Into<String>, duration: f64) {
         self.bubble = Some(text.into());
         self.bubble_ttl = duration;
+    }
+
+    /// The pet's own line for `key` from its skin's pet.json (see `Voice`), or else `fallback`.
+    pub fn line_or(&self, key: &str, fallback: &str) -> String {
+        self.skin.as_ref().and_then(|s| s.pet.lines.get(key)).unwrap_or(fallback).to_string()
+    }
+
+    /// Its own line for `key`, or else its species' cat or dog line.
+    pub fn line(&self, key: &str, cat: &str, dog: &str) -> String { self.line_or(key, self.species.line(cat, dog)) }
+
+    /// Its own line for `key`, or else one of `fallback`.
+    pub fn one_of(&self, key: &str, fallback: &[&str]) -> String { self.line_or(key, pick(fallback)) }
+
+    /// Which colours of its art can change, if any: as its pet.json says, or a dragon's lavender scales.
+    pub fn recolor(&self) -> Option<Recolor> {
+        let own = self.skin.as_ref().and_then(|s| s.pet.recolor);
+        own.or((self.species == Species::Dragon).then_some(Recolor::LAVENDER))
     }
 }
 

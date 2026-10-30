@@ -108,6 +108,33 @@ pawpal --import-pet Mochi.pawpal
 Clips are stored in `<data dir>/PawPal/Skins/<pet>/<action>/` (on macOS, `~/Library/Application Support/PawPal/Skins`).
 Settings are in `<config dir>/PawPal/settings.json`. On macOS, settings from the old Swift version are carried over automatically.
 
+### Make your own kind of pet
+
+Any animal, with its own lines, colours and skills, without changing any code: put a `pet.json` in the pet's folder
+(PawPal writes a starter one the first time you adopt it). Every field is optional:
+
+```json
+{
+  "kind": "Axolotl",
+  "base": "cat",
+  "lines": { "hello": "Blub! 👋", "sounds": ["Blub", "*wiggle*"], "hungry": "Worms please 🪱" },
+  "recolor": { "hue": 330, "band": 28 },
+  "skills": [
+    { "name": "🫧 Blow Bubbles", "clip": "bubbles", "seconds": 4, "say": ["Blub blub~"], "burst": "🫧", "startle": false, "often": 0.5 }
+  ],
+  "remind": "bubbles"
+}
+```
+
+- **base**: the built-in animal it acts like (`cat`, `dog`, `snake`, `fox`, `trex`, `dragon`); any line you leave out is said its way.
+- **lines**: one line or a list per key: `sounds`, `hungry`, `petted`, `knead`, `hello`, `taunt`, `picked_up`, `yawn`, `yum`, `treat`, `cursor`, `found_you`, `nice_spot`, `startled`, `cuddle`, `too_sleepy`, `not_now`, `trick_done`, `tag`, `tag_over`, `fight_over`, and one per special skill: `transform`, `breathe_fire`, `fly`, `grow`, `herd`, `vanish`, `stomp`.
+- **recolor**: the hue (degrees) of the parts of the art that can change colour, and how far either side counts; adds 🎨 Color to its menu.
+- **skills**: each plays a clip folder of its own (import it from ➕ Add a Clip, where the skill is listed) for `seconds`, saying a line, with an emoji `burst` and, if `startle` is on, making pets nearby jump. `often` is how often it does it by itself (walking is 5; 0 = only from Do Activity).
+- **remind**: the clip it plays while telling you about a reminder; also set from 📅 Reminder Pose in its menu.
+
+The built-in special skills work for any pet with the clip for them: a `transform`, `firebreath`, `fly`, `grow`, `herd`, `vanish` or `stomp` folder.
+`pet.json` and its skills' clips go along when the pet is shared.
+
 ## Architecture
 
 Layers depend only downward. The engine knows nothing about drawing or the OS, and only `platform/` contains OS-specific code.

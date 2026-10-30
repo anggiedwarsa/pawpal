@@ -14,9 +14,10 @@ pub enum Species {
 }
 
 impl Species {
-    /// Reads a species name such as "snake" (any case, surrounding whitespace ignored).
+    /// Reads a species name such as "snake" or "T-Rex" (any case; spaces and dashes ignored).
     pub fn parse(name: &str) -> Option<Species> {
-        serde_json::from_value(serde_json::Value::String(name.trim().to_lowercase())).ok()
+        let name: String = name.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+        serde_json::from_value(serde_json::Value::String(name)).ok()
     }
 
     pub fn sounds(self) -> &'static [&'static str] {
@@ -84,7 +85,7 @@ impl Species {
 
     /// Picks the cat line or the dog line: snakes and dragons keep a cat's cool, foxes and
     /// T-rexes share a dog's bounce.
-    pub fn line(self, cat: &'static str, dog: &'static str) -> &'static str {
+    pub fn line<'a>(self, cat: &'a str, dog: &'a str) -> &'a str {
         match self {
             Species::Cat | Species::Snake | Species::Dragon => cat,
             Species::Dog | Species::Fox | Species::Trex => dog,

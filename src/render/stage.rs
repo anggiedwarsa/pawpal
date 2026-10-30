@@ -12,7 +12,7 @@ use femtovg::{Canvas, Color, ImageFlags, ImageId, ImageSource, Paint, Path};
 
 use crate::data::skin::{Clip, Skin};
 use crate::domain::Activity::*;
-use crate::domain::{Coat, Pet};
+use crate::domain::{Coat, Pet, Recolor};
 use crate::engine::World;
 use crate::support::*;
 
@@ -222,11 +222,11 @@ impl Stage {
         };
         let h = clip.height * s * (1.0 + GIANT * p.bigness);
         // A disguised pet shows the borrowed look in its owner's natural colours.
-        let coat = if p.disguise.is_some() { Coat::Natural } else { p.coat };
+        let paint = p.recolor().filter(|_| p.disguise.is_none() && p.coat != Coat::Natural).map(|art| (p.coat, art));
         // While growing or shrinking, decode once at full giant size and scale the drawing instead,
         // so the clip isn't decoded again on every frame of the change.
         let px_h = if p.bigness > 0.0 { clip.height * s * (1.0 + GIANT) } else { h };
-        let frame = self.frame(clip, idx, (px_h * self.dpi).ceil() as u32, coat)?;
+        let frame = self.frame(clip, idx, (px_h * self.dpi).ceil() as u32, paint)?;
 
         let w = h * frame.w / frame.h;
         p.size = Size { width: w, height: h };
@@ -248,13 +248,14 @@ impl Stage {
 
     /// Frames are decoded only while the clip is in use; clips that haven't played recently are dropped.
     /// They're kept at the `px` pixel height they're drawn at, not the (often much bigger) source size.
-    fn frame(&mut self, clip: &Clip, i: usize, px: u32, coat: Coat) -> Option<Img> {
-        let key = (clip.dir.clone(), coat);
+    /// `paint` is the coat to recolour it in and which of the art's colours that changes.
+    fn frame(&mut self, clip: &Clip, i: usize, px: u32, paint: Option<(Coat, Recolor)>) -> Option<Img> {
+        let key = (clip.dir.clone(), paint.map_or(Coat::Natural, |(c, _)| c));
         if self.clips.get(&key).is_none_or(|(at, _)| *at != px) {
             for f in self.clips.remove(&key).into_iter().flat_map(|(_, f)| f).flatten() {
                 self.canvas.delete_image(f.id);
             }
-            let frames = clip.files.iter().map(|f| self.load_image(f, clip.pixel_art, px, coat)).collect();
+            let frames = clip.files.iter().map(|f| self.load_image(f, clip.pixel_art, px, paint)).collect();
             self.clips.insert(key.clone(), (px, frames));
         }
         if self.recent.last() != Some(&key) {
@@ -274,14 +275,14 @@ impl Stage {
 
     /// Loads a frame scaled down to `px` pixels high (pixel art stays as it is and is scaled up with hard edges).
     /// `w` and `h` keep the source size, so the pet's proportions don't drift with rounding.
-    fn load_image(&mut self, file: &std::path::Path, pixel_art: bool, px: u32, coat: Coat) -> Option<Img> {
+    fn load_image(&mut self, file: &std::path::Path, pixel_art: bool, px: u32, paint: Option<(Coat, Recolor)>) -> Option<Img> {
         let mut img = image::open(file).ok()?.to_rgba8();
         let (w, h) = img.dimensions();
         // Premultiplied, so the transparent background doesn't bleed dark edges in when scaling down.
         // (Recoloured first, while the colours are still straight.)
         for p in img.pixels_mut() {
-            if coat != Coat::Natural && p[3] > 0 {
-                let [r, g, b] = coat.recolor([p[0], p[1], p[2]]);
+            if let Some((coat, art)) = paint.filter(|_| p[3] > 0) {
+                let [r, g, b] = coat.recolor([p[0], p[1], p[2]], art);
                 (p[0], p[1], p[2]) = (r, g, b);
             }
             let a = p[3] as u32;

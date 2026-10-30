@@ -107,3 +107,41 @@ fn names_are_safe_folder_names() {
     assert_eq!(clean_name("  "), "Shared Pet");
     assert_eq!(clean_name(&"x".repeat(100)).len(), 60);
 }
+
+#[test]
+fn a_pets_own_skills_and_pet_file_travel_with_it() {
+    let (from, to) = (temp("skills-from"), temp("skills-to").join("Skins"));
+    let dir = pet_folder(&from, "Bloop");
+    std::fs::write(dir.join("pet.json"), r#"{ "kind": "Axolotl", "skills": [{ "name": "🫧 Bubbles", "clip": "bubbles" }] }"#).unwrap();
+    std::fs::create_dir_all(dir.join("bubbles")).unwrap();
+    std::fs::write(dir.join("bubbles/clip.json"), "{}").unwrap();
+    std::fs::write(dir.join("bubbles/frame_000.png"), "b").unwrap();
+    std::fs::create_dir_all(dir.join("extra")).unwrap();
+    std::fs::write(dir.join("extra/clip.json"), "{}").unwrap();
+    let file = from.join("Bloop.pawpal");
+    export(&dir, "Bloop", &file).unwrap();
+    let pet = to.join(import(&file, &to).unwrap());
+    assert!(pet.join("pet.json").is_file());
+    assert_eq!(std::fs::read_to_string(pet.join("bubbles/frame_000.png")).unwrap(), "b");
+    assert!(!pet.join("extra").exists(), "folders no skill uses stay behind");
+    let _ = std::fs::remove_dir_all(from);
+    let _ = std::fs::remove_dir_all(to.parent().unwrap());
+}
+
+#[test]
+fn a_shared_pet_file_cant_reach_outside_through_a_skill() {
+    let dir = temp("evil-skill");
+    let root = dir.join("Skins");
+    let file = dir.join("evil.pawpal");
+    zip_with(&file, &[
+        ("pawpal.json", r#"{"name":"Sly","format":1}"#),
+        ("pet.json", r#"{ "skills": [{ "name": "x", "clip": ".." }, { "name": "y", "clip": "ok" }] }"#),
+        ("walk/clip.json", "{}"),
+        ("ok/clip.json", "{}"),
+        ("../ok/clip.json", "{}"),
+    ]);
+    let pet = root.join(import(&file, &root).unwrap());
+    assert!(pet.join("ok/clip.json").is_file() && pet.join("pet.json").is_file());
+    assert!(!dir.join("ok").exists());
+    let _ = std::fs::remove_dir_all(dir);
+}

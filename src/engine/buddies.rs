@@ -26,7 +26,7 @@ impl World {
         let napping = self.pets.iter().any(|o| o.id != 0 && o.id != p.id && o.activity == Sleep && !o.commanded);
         if napping && p.energy < SNUGGLE_ENERGY && p.supports(Sleep) && chance(SNUGGLE_CHANCE) {
             self.start(p, Sleep, false);
-            p.say(p.species.line("Room for one more? 💕", "Scoot over! 💕"), 2.6);
+            p.say(p.line("cuddle", "Room for one more? 💕", "Scoot over! 💕"), 2.6);
             return true;
         }
         if !p.can_move() || !chance(BUDDY_CHANCE) { return false }

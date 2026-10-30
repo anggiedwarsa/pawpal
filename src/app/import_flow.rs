@@ -13,7 +13,7 @@ pub enum ImportMsg {
 }
 
 impl App {
-    pub fn import_clip_ui(&mut self, preset: Option<String>, action: &'static str) {
+    pub fn import_clip_ui(&mut self, preset: Option<String>, action: String) {
         let Some(file) = rfd::FileDialog::new()
             .set_title("Choose a short clip of your cat (2–6 seconds, plain background works best)")
             .add_filter("Clips", &["mp4", "mov", "m4v", "webm", "mkv", "avi", "gif", "webp", "png", "apng"])
@@ -38,7 +38,7 @@ impl App {
         self.import_rx = Some(rx);
         std::thread::spawn(move || {
             let progress = tx.clone();
-            let result = clip_importer::import_clip(&file, &skin_name, action, &move |text| {
+            let result = clip_importer::import_clip(&file, &skin_name, &action, &move |text| {
                 let _ = progress.send(ImportMsg::Progress(text));
             });
             let _ = tx.send(ImportMsg::Done(skin_name, result));

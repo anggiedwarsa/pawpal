@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-/// A dragon's scale colour. The art is drawn lavender; any other coat is made by shifting just the
-/// scale and wing colours to a new hue as frames load, so the golden belly, cream horns, amber eyes,
-/// pink cheeks, the outline and the fire keep their own colours.
+/// A pet's scale or fur colour. Any coat but the natural one is made by shifting just the colours
+/// near the art's own hue (see `Recolor`) to a new hue as frames load, so for the dragon the golden
+/// belly, cream horns, amber eyes, pink cheeks, the outline and the fire keep their own colours.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Coat {
@@ -16,10 +16,22 @@ pub enum Coat {
     Shadow,
 }
 
-/// The hue (degrees) the lavender art is centred on, and the band either side of it that counts
-/// as "scales": wide enough for the shading and the paler wings, narrow enough to miss everything else.
-const ART_HUE: f32 = 257.0;
-const BAND: f32 = 28.0;
+/// Which colours in a pet's art can be recoloured: the hue (degrees) they're centred on, and the band
+/// either side of it that counts as "scales". From `recolor` in the skin's `pet.json`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Recolor {
+    pub hue: f32,
+    #[serde(default = "default_band")]
+    pub band: f32,
+}
+
+fn default_band() -> f32 { Recolor::LAVENDER.band }
+
+impl Recolor {
+    /// The dragon's lavender scales: wide enough for the shading and the paler wings, narrow enough
+    /// to miss everything else.
+    pub const LAVENDER: Recolor = Recolor { hue: 257.0, band: 28.0 };
+}
 
 impl Coat {
     pub const ALL: [Coat; 7] = [Coat::Natural, Coat::Red, Coat::Pink, Coat::Blue, Coat::Green, Coat::Gold, Coat::Shadow];
@@ -51,12 +63,12 @@ impl Coat {
 
     /// Recolours one straight (not premultiplied) RGB pixel; anything outside the scale colours is
     /// returned as it is.
-    pub fn recolor(self, rgb: [u8; 3]) -> [u8; 3] {
+    pub fn recolor(self, rgb: [u8; 3], art: Recolor) -> [u8; 3] {
         let Some((hue, sat_k, val_k)) = self.target() else { return rgb };
         let (h, s, v) = to_hsv(rgb);
-        let off = ((h - ART_HUE + 540.0) % 360.0) - 180.0;
+        let off = ((h - art.hue + 540.0) % 360.0) - 180.0;
         // Very dark (the outline) and washed-out pixels aren't scales.
-        if off.abs() > BAND || s < 0.15 || v < 0.3 { return rgb }
+        if off.abs() > art.band || s < 0.15 || v < 0.3 { return rgb }
         from_hsv((hue + off + 360.0) % 360.0, (s * sat_k).min(1.0), (v * val_k).min(1.0))
     }
 }
