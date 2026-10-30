@@ -226,7 +226,7 @@ impl World {
         ];
         if self.pets.len() > 1 { options.extend([(PlayFriend, 1.2), (PlayFight, 0.9)]) }
         if p.species == Species::Fox { options.push((Transform, 0.6)) }
-        options.extend([(BreatheFire, 0.5), (Fly, 5.0), (Grow, 0.6), (Vanish, 0.6), (Stomp, 0.6)]);
+        options.extend([(BreatheFire, 0.5), (Fly, 0.6), (Grow, 0.6), (Vanish, 0.6), (Stomp, 0.6)]);
         if self.pets.len() > 1 { options.push((Herd, 0.7)) }
         options.retain(|o| can(o.0));
         let day = self.day();

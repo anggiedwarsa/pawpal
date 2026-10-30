@@ -223,7 +223,10 @@ impl Stage {
         let h = clip.height * s * (1.0 + GIANT * p.bigness);
         // A disguised pet shows the borrowed look in its owner's natural colours.
         let coat = if p.disguise.is_some() { Coat::Natural } else { p.coat };
-        let frame = self.frame(clip, idx, (h * self.dpi).ceil() as u32, coat)?;
+        // While growing or shrinking, decode once at full giant size and scale the drawing instead,
+        // so the clip isn't decoded again on every frame of the change.
+        let px_h = if p.bigness > 0.0 { clip.height * s * (1.0 + GIANT) } else { h };
+        let frame = self.frame(clip, idx, (px_h * self.dpi).ceil() as u32, coat)?;
 
         let w = h * frame.w / frame.h;
         p.size = Size { width: w, height: h };
