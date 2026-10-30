@@ -7,6 +7,7 @@ use std::rc::Rc;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::Activity::{self, *};
+use crate::domain::Species;
 
 /// One cut-out animation (walk, sit, sleep…) of a realistic pet. Frames are decoded by the renderer.
 pub struct Clip {
@@ -50,14 +51,18 @@ pub struct Skin {
     pub clips: BTreeMap<String, Clip>,
     /// Who made the art, shown in the pet's menu (from credit.txt in the skin folder).
     pub credit: Option<String>,
+    /// What animal the art shows (from species.txt), so adopting it needn't ask.
+    pub species: Option<Species>,
 }
 
 /// Actions a clip can be imported as, with the pet's typical height (points, size 1) in that pose.
-pub const ACTIONS: [(&str, &str, f64); 15] = [
+pub const ACTIONS: [(&str, &str, f64); 22] = [
     ("walk", "Walk", 62.0), ("run", "Run", 56.0), ("idle", "Stand / Idle", 62.0), ("sit", "Sit", 74.0), ("lie", "Lie Down", 40.0),
     ("sleep", "Sleep", 34.0), ("stretch", "Stretch", 52.0), ("groom", "Groom", 70.0), ("play", "Play / Pounce", 62.0),
     ("eat", "Eat", 54.0), ("jump", "Jump", 80.0), ("knead", "Make Biscuits", 42.0), ("meow", "Meow", 70.0),
-    ("petted", "Being Petted", 60.0), ("hunt", "Stalk / Watch", 54.0),
+    ("petted", "Being Petted", 60.0), ("hunt", "Stalk / Watch", 54.0), ("transform", "Transform", 70.0),
+    ("firebreath", "Breathe Fire", 70.0), ("fly", "Fly", 60.0), ("grow", "Grow Giant", 80.0), ("herd", "Herd", 62.0),
+    ("vanish", "Vanish", 70.0), ("stomp", "Stomp", 70.0),
 ];
 
 /// Which clips to try for each activity, best first.
@@ -84,6 +89,14 @@ pub fn fallbacks(a: Activity) -> &'static [&'static str] {
         Peekaboo | Hide => &["sit", "idle"],
         Remind => &["sit", "idle"],
         PlayFriend => &["play", "run"],
+        PlayFight => &["play", "hunt", "idle"],
+        Transform => &["transform"],
+        BreatheFire => &["firebreath"],
+        Fly => &["fly"],
+        Grow => &["grow"],
+        Herd => &["herd"],
+        Vanish => &["vanish"],
+        Stomp => &["stomp"],
         Petted => &["petted", "lie", "sit"],
         Hop => &["jump", "play", "idle"],
         Dragged | Falling => &["jump", "idle", "sit"],
@@ -92,7 +105,7 @@ pub fn fallbacks(a: Activity) -> &'static [&'static str] {
 
 /// Activities that need the pet to travel along the Dock.
 fn travelling(a: Activity) -> bool {
-    matches!(a, Walk | Sniff | Run | Eat | PlayBall | ChaseButterfly | ChaseCursor | PlayFriend)
+    matches!(a, Walk | Sniff | Run | Eat | PlayBall | ChaseButterfly | ChaseCursor | PlayFriend | PlayFight | Herd)
 }
 
 impl Skin {
@@ -131,13 +144,14 @@ pub fn load_all() -> BTreeMap<String, Rc<Skin>> {
     let Ok(dirs) = std::fs::read_dir(&root) else { return out };
     for dir in dirs.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
         let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let mut skin = Skin { name, clips: BTreeMap::new(), credit: None };
+        let mut skin = Skin { name, clips: BTreeMap::new(), credit: None, species: None };
         for (action, _, _) in ACTIONS {
             if let Some(clip) = load_clip(&dir.join(action)) {
                 skin.clips.insert(action.to_string(), clip);
             }
         }
         skin.credit = std::fs::read_to_string(dir.join("credit.txt")).ok();
+        skin.species = std::fs::read_to_string(dir.join("species.txt")).ok().and_then(|s| Species::parse(&s));
         if !skin.clips.is_empty() {
             out.insert(skin.name.clone(), Rc::new(skin));
         }

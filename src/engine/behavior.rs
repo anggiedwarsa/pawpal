@@ -2,6 +2,7 @@
 
 use super::laser::LASER_CHANCE;
 use super::perch::PERCH_CHANCE;
+use super::play::{FIRE_TIME, GAME_TIME, GROW_TIME, HERD_TIME, STOMP_TIME};
 use super::rhythm::{weight, DayPart};
 use super::world::{on_dock, World, DANCE_TO_MUSIC, VISIT_DURATION, VISIT_FOLLOW_DISTANCE};
 use crate::data::settings;
@@ -120,11 +121,42 @@ impl World {
                 p.timer = f64::INFINITY;
                 p.target_x = Some(self.corner_x(p, self.corner_slot(p, Hide)));
             }
-            PlayFriend => p.timer = 12.0,
+            PlayFriend | PlayFight => p.timer = GAME_TIME,
+            Transform => {
+                p.timer = 3.4;
+                self.reveal(p, "Hehe, the real me! 🦊");
+                p.say(pick(&["Transform! 🔥", "Kon… KON!! 🔥", "Watch this~ ✨"]), 2.2);
+            }
+            Fly => self.take_off(p),
+            Grow => {
+                p.timer = GROW_TIME;
+                p.say("Sss… behold my true form! 🐍", 2.2);
+            }
+            Herd => {
+                p.timer = HERD_TIME;
+                p.say("Everyone, over here! 🐾", 2.2);
+            }
+            Vanish => {
+                p.timer = 6.0;
+                p.say("Now you see me… ✨", 1.6);
+            }
+            Stomp => {
+                p.timer = STOMP_TIME;
+                p.say("RAAAWR! 🦖", 1.6);
+            }
+            BreatheFire => {
+                p.timer = FIRE_TIME;
+                p.say("*deep breath*", 1.0);
+            }
             Petted => {
                 p.timer = 2.2;
                 p.happiness = (p.happiness + 12.0).min(100.0);
-                p.say(pick(p.species.petted()), 2.6);
+                // Petting a shapeshifted kitsune breaks the spell.
+                if p.disguise.is_some() {
+                    self.reveal(p, "Hehe, you found me! 🦊");
+                } else {
+                    p.say(pick(p.species.petted()), 2.6);
+                }
             }
             Dragged => p.timer = f64::INFINITY,
             Falling => p.timer = 6.0,
@@ -192,7 +224,10 @@ impl World {
             (Dance, if p.happiness > 60.0 { 0.7 } else { 0.2 }), (Wave, 0.5), (Meow, 1.0), (Peekaboo, 0.5),
             (Sleep, if p.energy < 40.0 { 3.0 } else { 0.3 }), (Hop, 1.5), (Stretch, 0.4),
         ];
-        if self.pets.len() > 1 { options.push((PlayFriend, 1.2)) }
+        if self.pets.len() > 1 { options.extend([(PlayFriend, 1.2), (PlayFight, 0.9)]) }
+        if p.species == Species::Fox { options.push((Transform, 0.6)) }
+        options.extend([(BreatheFire, 0.5), (Fly, 5.0), (Grow, 0.6), (Vanish, 0.6), (Stomp, 0.6)]);
+        if self.pets.len() > 1 { options.push((Herd, 0.7)) }
         options.retain(|o| can(o.0));
         let day = self.day();
         for o in &mut options { o.1 *= weight(day, o.0) }
@@ -246,6 +281,11 @@ impl World {
         if p.bubble.is_some() {
             p.bubble_ttl -= dt;
             if p.bubble_ttl <= 0.0 { p.bubble = None }
+        }
+        if p.activity != Grow && p.bigness > 0.0 { p.bigness = (p.bigness - dt * 1.5).max(0.0) }
+        if p.disguise.is_some() {
+            p.disguise_ttl -= dt;
+            if p.disguise_ttl <= 0.0 && p.activity != Dragged { self.reveal(p, "Tadaa~ it was me! 🦊") }
         }
 
         if p.climbing {
@@ -372,7 +412,15 @@ impl World {
             Peekaboo => self.peekaboo(p, dt),
             Hide => self.hide(p, dt),
             Remind => self.remind_step(p, dt),
-            PlayFriend => self.play_friend(p),
+            PlayFriend => self.play_tag(p),
+            PlayFight => self.play_fight(p),
+            Transform => self.transform(p),
+            BreatheFire => self.breathe_fire(p),
+            Fly => self.fly(p, dt),
+            Grow => self.grow(p, dt),
+            Herd => self.herd(p),
+            Vanish => self.vanish(p, dt),
+            Stomp => self.stomp(p),
             Petted => {
                 p.vx = 0.0;
                 if p.fx <= 0.0 {
@@ -399,7 +447,8 @@ impl World {
     // Pieces of update
 
     fn apply_physics(&self, p: &mut Pet, dt: f64) {
-        if p.leaping || matches!(p.activity, Dragged | VisitCursor | Hide) { return }
+        // (a flying pet moves itself: no gravity)
+        if p.leaping || matches!(p.activity, Dragged | VisitCursor | Hide | Fly) { return }
         if p.activity == Remind && p.step == 2 { return } // standing in mid-screen
         if p.y > p.floor || p.vy != 0.0 {
             p.vy -= 1200.0 * self.s * dt;
@@ -499,24 +548,6 @@ impl World {
         if (spot - p.x).abs() < 40.0 * s && by < 120.0 * s && p.on_ground() && chance(dt * 2.0) {
             p.vy = 400.0 * s;
             self.butterflies[bi].flee = 1.0;
-        }
-    }
-
-    fn play_friend(&mut self, p: &mut Pet) {
-        let s = self.s;
-        let friend = (0..self.pets.len())
-            .filter(|&j| self.pets[j].id != 0 && self.pets[j].id != p.id)
-            .min_by(|&a, &b| (self.pets[a].x - p.x).abs().total_cmp(&(self.pets[b].x - p.x).abs()));
-        let Some(j) = friend else { p.timer = 0.0; return };
-        let (fx, fw) = (self.pets[j].x, self.pets[j].size.width);
-        let side = if fx > p.x { 1.0 } else { -1.0 };
-        if self.move_to(p, fx - side * (fw / 2.0 + p.size.width / 2.0), 150.0 * s) {
-            self.emit("💕", self.head_point(p), 14.0);
-            if !matches!(self.pets[j].activity, Dragged | Sleep | Falling) {
-                self.with_pet(j, |w, f| w.start(f, Jump, false));
-            }
-            self.start(p, Jump, false);
-            p.say(p.species.line("Tag! You're it!", "Play with me!!"), 2.6);
         }
     }
 
@@ -676,7 +707,15 @@ fn sleep_duration(p: &Pet) -> f64 {
 }
 
 /// What a pet says when the user picks it up.
-pub fn picked_up_line(species: Species) -> &'static str { species.line("Mrrow?!", "Whoa!") }
+pub fn picked_up_line(species: Species) -> &'static str {
+    match species {
+        Species::Snake => "Hsss?!",
+        Species::Fox => "Kyaa?!",
+        Species::Trex => "RAWR?! Put me down!",
+        Species::Dragon => "Eep! *smoke puff*",
+        _ => species.line("Mrrow?!", "Whoa!"),
+    }
+}
 
 #[cfg(test)]
 #[path = "behavior_tests.rs"]

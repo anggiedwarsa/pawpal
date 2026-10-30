@@ -19,6 +19,7 @@ fn pets_round_trip_in_the_swift_format() {
     let json = r#"[{"name":"Mochi","species":"cat","skin":"Mochi","hunger":20,"energy":85,"happiness":70}]"#;
     let pets: Vec<PetSave> = serde_json::from_str(json).unwrap();
     assert_eq!((pets[0].name.as_str(), pets[0].species, pets[0].hunger), ("Mochi", Species::Cat, 20.0));
+    assert_eq!(pets[0].coat, crate::domain::Coat::Natural, "pets saved before colours keep their natural colour");
     assert!(serde_json::to_string(&pets).unwrap().contains("\"skin\":\"Mochi\""));
 }
 

@@ -24,7 +24,7 @@ fn main() {
         finish(result);
     }
 
-    // `pawpal --import-sheet sheet.png "My Cat" "walk=9@10/30,sit=0@5" ["Art by …"]` imports a pixel-art sprite sheet.
+    // `pawpal --import-sheet sheet.png "My Cat" "walk=9@10/30,sit=0@5" ["Art by …"]` imports a hand-drawn sprite sheet.
     if let Some(i) = args.iter().position(|a| a == "--import-sheet").filter(|i| i + 3 < args.len()) {
         let spec = sheet_importer::parse(&args[i + 3]);
         let result = sheet_importer::import_sheet(Path::new(&args[i + 1]), &args[i + 2], &spec, args.get(i + 4).map(String::as_str));

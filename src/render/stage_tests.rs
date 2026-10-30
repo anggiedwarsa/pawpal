@@ -74,3 +74,12 @@ fn only_going_down_tips_the_jump_nose_down() {
     p.vy = -150.0;
     assert_eq!(fall_tilt(&p, 1.0), MAX_FALL_TILT / 2.0);
 }
+
+#[test]
+fn a_flying_dragon_shows_its_wings_not_a_jump() {
+    let (mut p, s) = pet(&["walk", "jump", "fly"]);
+    p.activity = Fly;
+    p.y = 120.0;
+    p.vx = 160.0;
+    assert_eq!(choose(&p, &s, 1.0).map(|c| c.0), Some("fly"));
+}

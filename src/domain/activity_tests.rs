@@ -18,3 +18,9 @@ fn quiet_activities_are_calm() {
     assert!(Sleep.is_calm() && Sit.is_calm());
     assert!(!Run.is_calm() && !PlayBall.is_calm());
 }
+
+#[test]
+fn special_powers_are_flagged() {
+    assert!([Transform, BreatheFire, Fly, Grow, Herd, Vanish, Stomp].iter().all(|a| a.is_special()));
+    assert!(!Walk.is_special() && !PlayFight.is_special());
+}

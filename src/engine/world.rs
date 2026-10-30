@@ -83,11 +83,11 @@ pub const SHY_RUN: f64 = 140.0;
 
 /// Activities that happen on the Dock (friends): a pet living elsewhere comes down for them.
 /// Food and toys don't need it: they appear on the level of the pet they're for.
-pub fn on_dock(a: Activity) -> bool { matches!(a, PlayFriend) }
+pub fn on_dock(a: Activity) -> bool { matches!(a, PlayFriend | PlayFight | Herd) }
 /// Activities typing doesn't interrupt.
-fn busy(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | Hop | Sleep | Eat | Peekaboo | Petted | Hide | Remind) }
+fn busy(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | Hop | Sleep | Eat | Peekaboo | Petted | Hide | Remind | Fly | Grow | Vanish | Stomp) }
 /// Activities a shy pet doesn't break off to run from the cursor.
-fn unflappable(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | ChaseCursor | Hop | Sleep | Peekaboo | Petted | Hide | Remind) }
+fn unflappable(a: Activity) -> bool { matches!(a, Dragged | Falling | VisitCursor | ChaseCursor | Hop | Sleep | Peekaboo | Petted | Hide | Remind | Fly | Grow | Vanish | Stomp) }
 
 impl World {
     pub fn new() -> World {

@@ -6,7 +6,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::Species;
+use crate::domain::{Coat, Species};
 use crate::engine::alarms::Alarm;
 use crate::engine::breaks::DEFAULT_BREAK_EVERY;
 use crate::engine::rhythm::DEFAULT_BEDTIME;
@@ -52,6 +52,9 @@ pub struct PetSave {
     pub hunger: f64,
     pub energy: f64,
     pub happiness: f64,
+    /// Scale colour (dragons); missing in pets saved before colours existed.
+    #[serde(default)]
+    pub coat: Coat,
 }
 
 #[derive(Serialize, Deserialize)]

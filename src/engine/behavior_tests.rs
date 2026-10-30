@@ -114,7 +114,7 @@ fn pets_play_tag_with_friends() {
     w.pets[1].x = 260.0;
     w.with_pet(0, |w, p| w.start(p, PlayFriend, true));
     run(&mut w, 0, 3.0);
-    assert_eq!(w.pets[1].activity, Jump, "the friend got tagged");
+    assert_eq!(w.pets[1].activity, PlayFriend, "the friend got tagged and joined the game");
 }
 
 #[test]

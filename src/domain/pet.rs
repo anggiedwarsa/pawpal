@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{Activity, ClickAction, Species};
+use super::{Activity, ClickAction, Coat, Species};
 use crate::data::skin::Skin;
 use crate::support::{Point, Size, Span};
 
@@ -23,6 +23,8 @@ pub struct Pet {
     pub name: String,
     pub species: Species,
     pub skin: Option<Rc<Skin>>,
+    /// The colour its scales are drawn in (dragons).
+    pub coat: Coat,
 
     // Position (x along the Dock, y = height above it) and motion, in points.
     pub x: f64,
@@ -80,6 +82,16 @@ pub struct Pet {
 
     /// Seconds until a pet woken from its nap goes back to bed.
     pub back_to_sleep: Option<f64>,
+
+    /// Another pet's look it has shapeshifted into (see `engine::play`), and for how long.
+    pub disguise: Option<Rc<Skin>>,
+    pub disguise_ttl: f64,
+    /// The height a flying pet cruises at (see `engine::play`).
+    pub cruise: f64,
+    /// Where a herding pet is gathering its flock.
+    pub rally: f64,
+    /// How far a pet has grown giant: 0 normal size … 1 fully grown (the renderer scales it up).
+    pub bigness: f64,
 }
 
 impl Pet {

@@ -12,7 +12,7 @@ use femtovg::{Canvas, Color, ImageFlags, ImageId, ImageSource, Paint, Path};
 
 use crate::data::skin::{Clip, Skin};
 use crate::domain::Activity::*;
-use crate::domain::Pet;
+use crate::domain::{Coat, Pet};
 use crate::engine::World;
 use crate::support::*;
 
@@ -51,8 +51,9 @@ pub struct Stage {
     swash: SwashCache,
     text_cache: HashMap<String, Img>,
     /// Decoded frames per clip folder, with the pixel height they were scaled to.
-    clips: HashMap<PathBuf, (u32, Vec<Option<Img>>)>,
-    recent: Vec<PathBuf>,
+    /// Decoded frames per clip and scale colour, at the pixel height they were decoded for.
+    clips: HashMap<(PathBuf, Coat), (u32, Vec<Option<Img>>)>,
+    recent: Vec<(PathBuf, Coat)>,
     anims: HashMap<u64, Anim>,
     /// Physical pixels per point.
     pub dpi: f64,
@@ -206,7 +207,8 @@ impl Stage {
     fn particle_image(&mut self, text: &str, size: f64) -> Option<Img> { self.text_image(text, size, 700, Rgba::white(0.35, 1.0)) }
 
     fn sync(&mut self, p: &mut Pet, ground: f64, s: f64, dt: f64) -> Option<PetDraw> {
-        let skin = p.skin.clone()?;
+        // A shapeshifted pet shows the look it borrowed.
+        let skin = p.disguise.clone().or_else(|| p.skin.clone())?;
         let (name, clip, rate) = choose(p, &skin, s)?;
         let anim = self.anims.entry(p.id).or_default();
         if anim.clip != name {
@@ -218,8 +220,10 @@ impl Stage {
             Some(k) => ((k * clip.count() as f64) as usize).min(clip.count().max(1) - 1),
             None => (anim.time * clip.fps) as usize % clip.count().max(1),
         };
-        let h = clip.height * s;
-        let frame = self.frame(clip, idx, (h * self.dpi).ceil() as u32)?;
+        let h = clip.height * s * (1.0 + GIANT * p.bigness);
+        // A disguised pet shows the borrowed look in its owner's natural colours.
+        let coat = if p.disguise.is_some() { Coat::Natural } else { p.coat };
+        let frame = self.frame(clip, idx, (h * self.dpi).ceil() as u32, coat)?;
 
         let w = h * frame.w / frame.h;
         p.size = Size { width: w, height: h };
@@ -241,17 +245,18 @@ impl Stage {
 
     /// Frames are decoded only while the clip is in use; clips that haven't played recently are dropped.
     /// They're kept at the `px` pixel height they're drawn at, not the (often much bigger) source size.
-    fn frame(&mut self, clip: &Clip, i: usize, px: u32) -> Option<Img> {
-        if self.clips.get(&clip.dir).is_none_or(|(at, _)| *at != px) {
-            for f in self.clips.remove(&clip.dir).into_iter().flat_map(|(_, f)| f).flatten() {
+    fn frame(&mut self, clip: &Clip, i: usize, px: u32, coat: Coat) -> Option<Img> {
+        let key = (clip.dir.clone(), coat);
+        if self.clips.get(&key).is_none_or(|(at, _)| *at != px) {
+            for f in self.clips.remove(&key).into_iter().flat_map(|(_, f)| f).flatten() {
                 self.canvas.delete_image(f.id);
             }
-            let frames = clip.files.iter().map(|f| self.load_image(f, clip.pixel_art, px)).collect();
-            self.clips.insert(clip.dir.clone(), (px, frames));
+            let frames = clip.files.iter().map(|f| self.load_image(f, clip.pixel_art, px, coat)).collect();
+            self.clips.insert(key.clone(), (px, frames));
         }
-        if self.recent.last() != Some(&clip.dir) {
-            self.recent.retain(|d| d != &clip.dir);
-            self.recent.push(clip.dir.clone());
+        if self.recent.last() != Some(&key) {
+            self.recent.retain(|d| d != &key);
+            self.recent.push(key.clone());
             while self.recent.len() > CLIP_CACHE_LIMIT {
                 let old = self.recent.remove(0);
                 for f in self.clips.remove(&old).into_iter().flat_map(|(_, f)| f).flatten() {
@@ -259,18 +264,23 @@ impl Stage {
                 }
             }
         }
-        let (_, frames) = self.clips.get(&clip.dir)?;
+        let (_, frames) = self.clips.get(&key)?;
         if frames.is_empty() { return None }
         frames[i % frames.len()]
     }
 
     /// Loads a frame scaled down to `px` pixels high (pixel art stays as it is and is scaled up with hard edges).
     /// `w` and `h` keep the source size, so the pet's proportions don't drift with rounding.
-    fn load_image(&mut self, file: &std::path::Path, pixel_art: bool, px: u32) -> Option<Img> {
+    fn load_image(&mut self, file: &std::path::Path, pixel_art: bool, px: u32, coat: Coat) -> Option<Img> {
         let mut img = image::open(file).ok()?.to_rgba8();
         let (w, h) = img.dimensions();
         // Premultiplied, so the transparent background doesn't bleed dark edges in when scaling down.
+        // (Recoloured first, while the colours are still straight.)
         for p in img.pixels_mut() {
+            if coat != Coat::Natural && p[3] > 0 {
+                let [r, g, b] = coat.recolor([p[0], p[1], p[2]]);
+                (p[0], p[1], p[2]) = (r, g, b);
+            }
             let a = p[3] as u32;
             for c in &mut p.0[..3] { *c = (*c as u32 * a / 255) as u8 }
         }
@@ -382,12 +392,18 @@ fn fall_tilt(p: &Pet, s: f64) -> f64 {
     down * MAX_FALL_TILT
 }
 
+/// How much bigger a pet grown giant is drawn (2.3× at full size).
+const GIANT: f64 = 1.3;
+
 /// About 45°: from a leap's head-up pose to head-down.
 const MAX_FALL_TILT: f64 = 0.8;
 
 /// Picks the clip that fits what the pet is doing; walk and run clips play faster or slower to match its speed.
 fn choose<'a>(p: &Pet, skin: &'a Skin, s: f64) -> Option<(&'a str, &'a Clip, f64)> {
     let speed = p.vx.abs();
+    if p.activity == Fly {
+        if let Some(c) = skin.clips.get("fly") { return Some(("fly", c, 1.0)) }
+    }
     if (!p.on_ground() || p.leaping) && !matches!(p.activity, Dragged | VisitCursor) {
         if let Some(c) = skin.clips.get("jump") { return Some(("jump", c, 1.0)) }
     }

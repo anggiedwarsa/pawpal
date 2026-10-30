@@ -23,7 +23,7 @@ pub fn clip(name: &str) -> Clip {
 
 pub fn skin(clips: &[&str]) -> Rc<Skin> {
     let clips: BTreeMap<String, Clip> = clips.iter().map(|n| (n.to_string(), clip(n))).collect();
-    Rc::new(Skin { name: "Test".into(), clips, credit: None })
+    Rc::new(Skin { name: "Test".into(), clips, credit: None, species: None })
 }
 
 /// A skin with every clip, so a pet can do anything.

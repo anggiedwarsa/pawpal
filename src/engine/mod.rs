@@ -11,6 +11,7 @@ pub mod greet;
 mod interaction;
 pub mod laser;
 mod perch;
+mod play;
 mod props_physics;
 pub mod rhythm;
 pub mod seasons;

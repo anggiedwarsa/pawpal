@@ -9,7 +9,7 @@ use super::App;
 use crate::data::settings::{self, Todo, WalkArea};
 use crate::data::skin::ACTIONS;
 use crate::domain::Activity::{self, *};
-use crate::domain::Pet;
+use crate::domain::{Coat, Pet, Species};
 use crate::engine::alarms::{clock_label, Alarm};
 use crate::engine::breaks::BREAK_EVERY;
 use crate::engine::focus::FOCUS_FOR;
@@ -44,6 +44,7 @@ pub enum Command {
     CancelAlarm(u64),
     Rename(u64),
     Flip(String),
+    Coat { pet: u64, coat: Coat },
     Import { skin: Option<String>, action: &'static str },
     Remove(u64),
     Share(String),
@@ -189,16 +190,18 @@ fn clock(h: u32) -> String {
 }
 
 /// Activities, with ones the pet has no clip for greyed out and saying which clip to import.
+/// Special powers only some pets have (transforming, breathing fire) are left out for the others instead.
 fn activity_items(pets: &[&Pet]) -> Vec<Node> {
     Activity::MENU
         .iter()
-        .map(|&a| {
+        .filter_map(|&a| {
             let able: Vec<u64> = pets.iter().filter(|p| p.supports(a)).map(|p| p.id).collect();
             if able.is_empty() {
+                if a.is_special() { return None }
                 let missing = pets.first().and_then(|p| p.skin.as_ref()).map_or("walk", |s| s.missing_clip(a));
-                return note(format!("{}  — needs a “{missing}” clip", a.title()));
+                return Some(note(format!("{}  — needs a “{missing}” clip", a.title())));
             }
-            item(a.title(), Command::Do { pets: able, activity: a })
+            Some(item(a.title(), Command::Do { pets: able, activity: a }))
         })
         .collect()
 }
@@ -247,6 +250,9 @@ pub fn pet_menu(p: &Pet) -> Vec<Node> {
     if let Some(skin) = &p.skin {
         if let Some(credit) = &skin.credit { m.push(note(credit.trim())) }
         m.push(item("↔️ Flip Direction", Command::Flip(skin.name.clone())));
+        if p.species == Species::Dragon {
+            m.push(sub("🎨 Color", Coat::ALL.iter().map(|&c| check(c.title(), p.coat == c, Command::Coat { pet: p.id, coat: c })).collect()));
+        }
         m.push(sub(format!("➕ Add a Clip for {}", skin.name), import_items(Some(&skin.name))));
         m.push(item(format!("📤 Share {}…", skin.name), Command::Share(skin.name.clone())));
     }

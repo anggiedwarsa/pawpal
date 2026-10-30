@@ -11,7 +11,7 @@ pub const LASER_CHANCE: f64 = 0.85;
 pub const LASER_IDLE: f64 = 60.0;
 
 /// Activities the dot doesn't pull a pet away from.
-fn hooked_elsewhere(p: &Pet) -> bool { matches!(p.activity, Dragged | Falling | Hop | Sleep | Hide | Remind | VisitCursor) || p.leaping }
+fn hooked_elsewhere(p: &Pet) -> bool { matches!(p.activity, Dragged | Falling | Hop | Sleep | Hide | Remind | VisitCursor | Fly) || p.leaping }
 
 impl World {
     /// Turns the laser on or off. Pets drop what they're doing for it, and wonder where it went afterwards.

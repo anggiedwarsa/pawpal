@@ -1,4 +1,5 @@
-//! Imports a pixel-art sprite sheet (one animation per row of equal cells) as a skin.
+//! Imports a hand-drawn sprite sheet (one animation per row of equal cells) as a skin.
+//! Frames are scaled smoothly rather than with hard pixel edges, so high-resolution art reads cleanly.
 //! Every clip shares one crop box, so the cat keeps the same size and ground line whatever it is doing.
 
 use std::path::Path;
@@ -34,8 +35,8 @@ pub fn parse(spec: &str) -> Vec<Row> {
 }
 
 pub fn import_sheet(path: &Path, skin: &str, spec: &[Row], credit: Option<&str>) -> Result<String, String> {
-    const CELL: u32 = 32;
-    const POINTS_PER_PIXEL: f64 = 2.5;
+    const CELL: u32 = 128;
+    const POINTS_PER_PIXEL: f64 = 0.625;
     let sheet = image::open(path).map_err(|_| "Couldn't read the sprite sheet.".to_string())?.to_rgba8();
     let cols = sheet.width() / CELL;
     let frame = |r: u32, c: u32| -> Option<RgbaImage> {
@@ -74,7 +75,7 @@ pub fn import_sheet(path: &Path, skin: &str, spec: &[Row], credit: Option<&str>)
             speed: row.speed,
             height: union.h as f64 * POINTS_PER_PIXEL,
             faces_right: true,
-            pixel_art: Some(true),
+            pixel_art: Some(false),
             reach: None,
         };
         std::fs::write(dir.join("clip.json"), serde_json::to_vec(&meta).unwrap()).map_err(|e| e.to_string())?;

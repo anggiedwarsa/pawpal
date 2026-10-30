@@ -1,6 +1,6 @@
 //! Sharing pets: a pet's clips packed into one `.pawpal` file (a zip) that a friend can import.
 //!
-//! Inside: `pawpal.json` naming the pet, `credit.txt` if it has one, and `<action>/clip.json` plus
+//! Inside: `pawpal.json` naming the pet, `credit.txt` and `species.txt` if it has them, and `<action>/clip.json` plus
 //! `<action>/*.png` for each clip, laid out exactly as in the clip library.
 
 use std::fs::File;
@@ -32,7 +32,9 @@ pub fn export(skin_dir: &Path, name: &str, out: &Path) -> Result<(), String> {
     zip.start_file("pawpal.json", opts).map_err(|e| fail(&e))?;
     zip.write_all(&manifest).map_err(|e| fail(&e))?;
     let mut files: Vec<String> = Vec::new();
-    if skin_dir.join("credit.txt").is_file() { files.push("credit.txt".into()) }
+    for extra in ["credit.txt", "species.txt"] {
+        if skin_dir.join(extra).is_file() { files.push(extra.into()) }
+    }
     for (action, _, _) in ACTIONS {
         let Ok(entries) = std::fs::read_dir(skin_dir.join(action)) else { continue };
         let mut names: Vec<String> = entries.flatten().filter_map(|e| e.file_name().to_str().map(String::from)).filter(|n| allowed_in_clip(n)).collect();
@@ -93,11 +95,11 @@ fn unpack(zip: &mut ZipArchive<File>, into: &Path) -> Result<(), String> {
 }
 
 /// Where an entry goes inside the pet's folder, or None for anything that isn't part of a pet:
-/// only `credit.txt` and the frames and settings of known actions, never a path leading elsewhere.
+/// only `credit.txt`, `species.txt` and the frames and settings of known actions, never a path leading elsewhere.
 fn place(p: &Path) -> Option<PathBuf> {
     let parts: Vec<&str> = p.components().map(|c| match c { Component::Normal(s) => s.to_str(), _ => None }).collect::<Option<_>>()?;
     match parts.as_slice() {
-        ["credit.txt"] => Some(PathBuf::from("credit.txt")),
+        [f @ ("credit.txt" | "species.txt")] => Some(PathBuf::from(f)),
         [action, file] if ACTIONS.iter().any(|a| a.0 == *action) && allowed_in_clip(file) => Some(Path::new(action).join(file)),
         _ => None,
     }

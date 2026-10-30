@@ -8,7 +8,7 @@ fn temp(tag: &str) -> PathBuf {
     dir
 }
 
-/// A pet folder with a walk and a sit clip, a credit, and some files that aren't part of it.
+/// A pet folder with a walk and a sit clip, a credit, a species, and some files that aren't part of it.
 fn pet_folder(root: &Path, name: &str) -> PathBuf {
     let dir = root.join(name);
     for action in ["walk", "sit"] {
@@ -17,6 +17,7 @@ fn pet_folder(root: &Path, name: &str) -> PathBuf {
         for f in ["frame_000.png", "frame_001.png"] { std::fs::write(dir.join(action).join(f), action).unwrap() }
     }
     std::fs::write(dir.join("credit.txt"), "Filmed by me").unwrap();
+    std::fs::write(dir.join("species.txt"), "snake").unwrap();
     std::fs::write(dir.join("walk").join("source.mp4"), "video").unwrap();
     std::fs::create_dir_all(dir.join("notes")).unwrap();
     std::fs::write(dir.join("notes").join("todo.txt"), "x").unwrap();
@@ -32,6 +33,7 @@ fn a_shared_pet_comes_back_exactly_as_it_was() {
     let pet = to.join("Mochi");
     assert_eq!(std::fs::read_to_string(pet.join("sit/frame_001.png")).unwrap(), "sit");
     assert!(pet.join("walk/clip.json").is_file() && pet.join("credit.txt").is_file());
+    assert_eq!(std::fs::read_to_string(pet.join("species.txt")).unwrap(), "snake", "the pet stays the same kind of animal");
     assert!(!pet.join("walk/source.mp4").exists() && !pet.join("notes").exists(), "only the pet itself is shared");
     let leftovers: Vec<_> = std::fs::read_dir(to.parent().unwrap()).unwrap().flatten().filter(|e| e.file_name() != "Skins").collect();
     assert!(leftovers.is_empty(), "nothing left in the staging area");

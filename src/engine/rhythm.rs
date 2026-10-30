@@ -40,7 +40,7 @@ pub fn weight(day: DayPart, a: Activity) -> f64 {
         (DayPart::Morning, Stretch | Groom) => 2.5,
         (DayPart::Morning, Sniff) => 1.5,
         (DayPart::Morning, Run) => 0.6,
-        (DayPart::Afternoon, Run | Pounce | Jump | Dance | Hop | PlayFriend) => 1.8,
+        (DayPart::Afternoon, Run | Pounce | Jump | Dance | Hop | PlayFriend | PlayFight) => 1.8,
         (DayPart::Afternoon, Sleep) => 0.5,
         (DayPart::Evening, Lounge | Knead | Sit | Groom) => 1.6,
         (DayPart::Evening, Run | Pounce | Dance | Jump) => 0.5,

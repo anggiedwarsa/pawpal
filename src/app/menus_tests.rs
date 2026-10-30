@@ -1,7 +1,7 @@
 //! Unit tests for app/menus.rs.
 
 use super::*;
-use crate::domain::Species;
+use crate::domain::{Coat, Species};
 use crate::testing::skin;
 
 fn titles(nodes: &[Node]) -> Vec<String> {
@@ -131,4 +131,37 @@ fn todos_are_listed_and_tick_off_when_chosen() {
             check("Book flights", false, Command::DoneTodo(8)),
         ]
     );
+}
+
+#[test]
+fn special_powers_show_up_only_for_the_pets_that_have_them() {
+    let fox = Pet::new(1, "Kyubi".into(), Species::Fox, Some(skin(&["walk", "transform"])));
+    let dragon = Pet::new(2, "Naga".into(), Species::Dragon, Some(skin(&["walk", "firebreath"])));
+    let cat = Pet::new(3, "Mochi".into(), Species::Cat, Some(skin(&["walk"])));
+    let has = |p: &Pet, t: &str| titles(&activity_items(&[p])).iter().any(|x| x == t);
+    assert!(has(&fox, "🦊 Transform") && !has(&fox, "🔥 Breathe Fire"));
+    assert!(has(&dragon, "🔥 Breathe Fire") && !has(&dragon, "🦊 Transform"));
+    assert!(titles(&activity_items(&[&cat])).iter().all(|x| !x.contains("Transform") && !x.contains("Breathe Fire")),
+            "no greyed-out hint for powers a cat will never have");
+}
+
+#[test]
+fn only_dragons_get_a_colour_menu_with_their_coat_ticked() {
+    let colours = |p: &Pet| {
+        pet_menu(p).into_iter().find_map(|n| match n {
+            Node::Sub { title, children } if title == "🎨 Color" => Some(children),
+            _ => None,
+        })
+    };
+    let mut dragon = Pet::new(1, "Naga".into(), Species::Dragon, Some(skin(&["walk", "fly"])));
+    dragon.coat = Coat::Pink;
+    let items = colours(&dragon).expect("a dragon can change colour");
+    assert_eq!(items.len(), Coat::ALL.len());
+    let ticked: Vec<String> = items.iter().filter_map(|n| match n {
+        Node::Item { title, checked: Some(true), .. } => Some(title.clone()),
+        _ => None,
+    }).collect();
+    assert_eq!(ticked, vec![Coat::Pink.title().to_string()]);
+    let cat = Pet::new(2, "Mochi".into(), Species::Cat, Some(skin(&["walk"])));
+    assert!(colours(&cat).is_none());
 }

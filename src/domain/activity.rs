@@ -24,6 +24,22 @@ pub enum Activity {
     Meow,
     Peekaboo,
     PlayFriend,
+    /// Rough-and-tumble play with a friend: pouncing, tussling, then making up.
+    PlayFight,
+    /// A kitsune's trick: powering up, then shapeshifting into another pet for a while.
+    Transform,
+    /// A dragon's party trick: a big breath in, then a gout of flame.
+    BreatheFire,
+    /// A dragon taking to the air: up from its floor, cruising about the screen, then landing again.
+    Fly,
+    /// A snake rearing up into a giant cobra, hood spread, then shrinking back.
+    Grow,
+    /// A corgi rounding up the other pets, running back and forth and barking.
+    Herd,
+    /// A cat sinking out of sight in a sparkle and popping up somewhere else.
+    Vanish,
+    /// A T-rex stomping hard enough to bounce every pet on its level.
+    Stomp,
     Petted,
     Hop,
     /// Peeking from the bottom-right corner while something plays full screen.
@@ -60,7 +76,15 @@ impl Activity {
             Wave => "👋 Wave",
             Meow => "💬 Talk",
             Peekaboo => "🙈 Peekaboo",
-            PlayFriend => "💞 Play With Friend",
+            PlayFriend => "💞 Play Tag With Friend",
+            PlayFight => "🤼 Play Fight",
+            Transform => "🦊 Transform",
+            BreatheFire => "🔥 Breathe Fire",
+            Fly => "🐉 Fly",
+            Grow => "🐍 Grow Giant",
+            Herd => "🐕 Herd Friends",
+            Vanish => "✨ Vanish",
+            Stomp => "🦖 Earthquake Stomp",
             Petted => "🥰 Get Petted",
             Hop => "🪜 Hop Up / Down",
             Hide => "🙈 Hide in the Corner",
@@ -71,10 +95,15 @@ impl Activity {
     }
 
     /// Activities the user can pick from a menu.
-    pub const MENU: [Activity; 23] = [
+    pub const MENU: [Activity; 31] = [
         Walk, Sniff, Run, Sit, Lounge, Knead, Sleep, Groom, Stretch, Jump, Pounce, Eat, PlayBall, ChaseButterfly, ChaseCursor,
-        VisitCursor, Dance, Wave, Meow, Peekaboo, PlayFriend, Petted, Hop,
+        VisitCursor, Dance, Wave, Meow, Peekaboo, PlayFriend, PlayFight, Transform, BreatheFire, Fly, Grow, Herd, Vanish, Stomp,
+        Petted, Hop,
     ];
+
+    /// Special powers only some kinds of pet have; menus leave them out for the others rather than
+    /// suggesting a clip to import.
+    pub fn is_special(self) -> bool { matches!(self, Transform | BreatheFire | Fly | Grow | Herd | Vanish | Stomp) }
 
     /// Quiet activities that can be animated at a lower frame rate.
     pub fn is_calm(self) -> bool {

@@ -34,7 +34,7 @@ use crate::data::settings::{self, PetSave};
 use crate::data::skin::{self, Skin};
 use crate::data::updates::{self, Release};
 use crate::domain::Activity::*;
-use crate::domain::{Pet, Species};
+use crate::domain::{Coat, Pet, Species};
 use crate::engine::alarms::{alarm_text, clock_label, parse_when, take_due, Alarm};
 use crate::engine::battery::{battery_text, BatteryWatch};
 use crate::engine::breaks::{nudge_text, BreakTimer};
@@ -839,6 +839,19 @@ impl App {
             Command::CancelAlarm(id) => settings::set_alarms(settings::alarms().into_iter().filter(|a| a.id != id).collect()),
             Command::Rename(id) => self.rename(id),
             Command::Flip(name) => settings::toggle_flipped(&name),
+            Command::Coat { pet, coat } => {
+                self.world.with_id(pet, |w, p| {
+                    if p.coat == coat { return }
+                    p.coat = coat;
+                    p.say(if coat == Coat::Natural { "Back to my old self~ ✨" } else { "Ta-da! New scales ✨" }, 2.4);
+                    for k in 0..6 {
+                        let a = k as f64 * std::f64::consts::PI / 3.0;
+                        let at = crate::support::pt(p.x, w.ground + p.y + p.size.height * 0.5);
+                        w.emit_with("✨", at, 13.0, crate::support::pt(a.cos() * 50.0 * w.s, a.sin() * 40.0 * w.s + 20.0 * w.s), 0.9);
+                    }
+                });
+                self.save_pets();
+            }
             Command::Import { skin, action } => self.import_clip_ui(skin, action),
             Command::Remove(id) => self.remove_pet(id),
             Command::Share(name) => self.share_pet(&name),
@@ -893,12 +906,26 @@ impl App {
     fn load_pets(&mut self) {
         let mut saved: Vec<PetSave> = settings::pets().into_iter().filter(|s| s.skin.as_ref().is_some_and(|k| self.skins.contains_key(k))).collect();
         if saved.is_empty() {
-            if let Some(first) = self.skins.keys().next() {
-                saved = vec![PetSave { name: first.clone(), species: Species::Cat, skin: Some(first.clone()), hunger: 20.0, energy: 85.0, happiness: 70.0 }];
+            if let Some(first) = self.skins.keys().next().cloned() {
+                let species = self.species_for(&first);
+                saved = vec![PetSave { name: first.clone(), species, skin: Some(first), hunger: 20.0, energy: 85.0, happiness: 70.0, coat: Coat::Natural }];
             }
         }
         for s in saved { self.add_pet(s); }
         self.save_pets();
+    }
+
+    /// The species a skin declares (species.txt), or else asks the user.
+    fn species_for(&self, skin: &str) -> Species {
+        self.skins.get(skin).and_then(|s| s.species).unwrap_or_else(|| Self::ask_species(skin))
+    }
+
+    /// Asks whether a newly adopted pet is a cat or a dog; defaults to Cat if the dialog is dismissed.
+    fn ask_species(skin: &str) -> Species {
+        match platform::alert("PawPal", &format!("Is {skin} a cat or a dog?"), &["🐱 Cat", "🐶 Dog"], false) {
+            Some(1) => Species::Dog,
+            _ => Species::Cat,
+        }
     }
 
     fn add_pet(&mut self, s: PetSave) -> u64 {
@@ -908,6 +935,7 @@ impl App {
         p.hunger = s.hunger;
         p.energy = s.energy;
         p.happiness = s.happiness;
+        p.coat = s.coat;
         p.x = self.world.random_x();
         p.facing = if chance(0.5) { 1.0 } else { -1.0 };
         self.world.pets.push(p);
@@ -921,7 +949,8 @@ impl App {
     }
 
     pub fn adopt(&mut self, skin: &str) {
-        let id = self.add_pet(PetSave { name: skin.into(), species: Species::Cat, skin: Some(skin.into()), hunger: 10.0, energy: 90.0, happiness: 80.0 });
+        let species = self.species_for(skin);
+        let id = self.add_pet(PetSave { name: skin.into(), species, skin: Some(skin.into()), hunger: 10.0, energy: 90.0, happiness: 80.0, coat: Coat::Natural });
         self.world.with_id(id, |_, p| p.say(format!("Hi! I'm {skin}!"), 3.0));
         self.save_pets();
     }
@@ -953,6 +982,7 @@ impl App {
                     hunger: p.hunger,
                     energy: p.energy,
                     happiness: p.happiness,
+                    coat: p.coat,
                 })
                 .collect(),
         );
